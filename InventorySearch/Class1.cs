@@ -23,6 +23,7 @@ namespace InventoryHelper
         public override string Name => "InventoryHelper";
         public override string Author => "kaan";
         public override string Version => "1.0.0";
+        public override string Link => "https://github.com/ResoniteMods/InventorySearch";
 
         private static Dictionary<string, SerializableRecord> _cache = new Dictionary<string, SerializableRecord>();
 
