@@ -117,6 +117,12 @@ namespace InventoryHelper
 
             private static void CacheDirectoryRecords(object directory)
             {
+                if (directory == null)
+                {
+                    Warn("No directory given for cache, skipping");
+                    return;
+                }
+
                 var RecordsField = directory.GetType().GetField("records", AccessTools.all);
                 var SubdirectoriesField = directory.GetType().GetField("subdirectories", AccessTools.all);
 
