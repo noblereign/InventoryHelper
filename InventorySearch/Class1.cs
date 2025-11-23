@@ -368,7 +368,7 @@ namespace InventoryHelper
                 var Records = new List<Record>(SearchResults);
                 var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
                 var ParentDirCache = InventoryBrowser.CurrentDirectory.ParentDirectory;
-                var Inventory = new RecordDirectory(InventoryBrowser.CurrentOwnerId, "Inventory", Engine.Current);
+                var Inventory = new RecordDirectory(Engine.Current.Cloud.CurrentUserID, "Inventory", Engine.Current);
                 
                 var SearchResultsDirs = SubDirs
                     .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
