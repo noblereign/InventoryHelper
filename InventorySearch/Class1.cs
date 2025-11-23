@@ -367,20 +367,20 @@ namespace InventoryHelper
 
                 var Records = new List<Record>(SearchResults);
                 var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
-                var ParentDirCache = InventoryBrowser.CurrentDirectory.ParentDirectory;
-                var Inventory = new RecordDirectory(Engine.Current.Cloud.CurrentUserID, "Inventory", Engine.Current);
+                //var ParentDirCache = InventoryBrowser.CurrentDirectory.ParentDirectory;
+                //var Inventory = new RecordDirectory(Engine.Current.Cloud.CurrentUserID, "Inventory", Engine.Current);
                 
                 var SearchResultsDirs = SubDirs
                     .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
 
                 var InventoryAdd = SearchResultsDirs.ToList();
-                InventoryAdd.Add(Inventory);
+                //InventoryAdd.Add(Inventory);
                 
                 var NewDir = new RecordDirectory(Engine.Current, InventoryAdd.ToList(), Records);
                 NewDir.EnsureFullyLoaded();
 
-                SetPropertyValue(NewDir, "Name", "Searched Inventory");
-                SetPropertyValue(NewDir, "ParentDirectory", ParentDirCache);
+                SetPropertyValue(NewDir, "Name", "Search Results");
+                SetPropertyValue(NewDir, "ParentDirectory", InventoryBrowser.CurrentDirectory);
                 
                 // SetPropertyValue(Inventory, "Name", "Inventory");
                 // SetPropertyValue(Inventory, "ParentDirectory", ParentDirCache);
