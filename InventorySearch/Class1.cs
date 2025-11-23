@@ -30,6 +30,9 @@ namespace InventoryHelper
             new ModConfigurationKey<string>("Cache Config Location",
                 "Save InventorySearchCache to a separate location.", () => CacheFilePath);
 
+        [AutoRegisterConfigKey]
+        public static readonly ModConfigurationKey<bool> DebugLogging = new("Enable debug logging", "Print debug logs when records are cached, copied, pasted, etc? <b>Enabling this may cause sensitive information to be saved to your logs.</b>", () => false);
+
         private static ModConfiguration Config;
         private static TextField LocalTextField;
 
@@ -69,7 +72,7 @@ namespace InventoryHelper
 
             LoadCacheFromFile();
 
-            Console.WriteLine("I reloaded uwu");
+            Debug("I reloaded uwu");
             // HotReloader.RegisterForHotReload(this);
         }
 
@@ -128,7 +131,10 @@ namespace InventoryHelper
                         var serializableRecord = new SerializableRecord(record);
                         _cache[id] = serializableRecord;
 
-                        Console.WriteLine($"Cached record: {id}, {serializableRecord.Name}");
+                        if (Config!.GetValue(DebugLogging))
+                        {
+                            Debug($"Cached record: {id}, {serializableRecord.Name}");
+                        }
                     }
                 }
 
@@ -240,7 +246,10 @@ namespace InventoryHelper
         {
             var copiedItem = _cache["CopiedItem"];
 
-            Console.WriteLine($" COPIED: {copiedItem} {copiedItem.ToRecord()}");
+            if (Config!.GetValue(DebugLogging))
+            {
+                Debug($" COPIED: {copiedItem} {copiedItem.ToRecord()}");
+            }
 
             Msg(CachedInventory.CurrentDirectory.Name);
             
@@ -265,12 +274,15 @@ namespace InventoryHelper
                 }
                 else
                 {
-                    Console.WriteLine($"Record with ID {copiedItem.RecordId} not found in CachedDir.Records.");
+                    if (Config!.GetValue(DebugLogging))
+                    {
+                        Warn($"Record with ID {copiedItem.RecordId} not found in CachedDir.Records.");
+                    }
                 }
             }
             else
             {
-                Console.WriteLine("Failed to retrieve 'records' field from CachedDir.");
+                Warn("Failed to retrieve 'records' field from CachedDir.");
             }
 
             NotificationMessage.SpawnTextMessage(
