@@ -25,12 +25,22 @@ namespace InventoryHelper
 
         private static Dictionary<string, SerializableRecord> _cache = new Dictionary<string, SerializableRecord>();
 
+        public enum SearchType
+        {
+            EntireInventory,
+            FocusedRecursive,
+            FocusedNonRecursive
+        }
+
         private static readonly string CacheFilePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "InventorySearchCache.json");
 
         [AutoRegisterConfigKey] private static readonly ModConfigurationKey<string> CacheConfig =
             new ModConfigurationKey<string>("Cache Config Location",
                 "Save InventorySearchCache to a separate location.", () => CacheFilePath);
+
+        [AutoRegisterConfigKey]
+        public static readonly ModConfigurationKey<SearchType> SearchStrategy = new ModConfigurationKey<SearchType>("Search Scope", "When searching, what parts of your inventory should be considered?", () => SearchType.EntireInventory);
 
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<bool> DebugLogging = new("Enable debug logging", "Print debug logs when records are cached, copied, pasted, etc? <b>Enabling this may cause sensitive information to be saved to your logs.</b>", () => false);
@@ -360,10 +370,15 @@ namespace InventoryHelper
                 
                 var SearchTerm = TextField.ToLower();
 
+                var strategy = Config!.GetValue(SearchStrategy);
+
+                var currentPath = InventoryBrowser.CurrentDirectory.Path;
+
                 var SearchResults = _cache
                     .Where(Kvp => Kvp.Value != null
                                 && !string.IsNullOrEmpty(Kvp.Value.Name)
-                                && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower()))
+                                && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
+                                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && currentPath.Contains(Kvp.Value.ToRecord().Path)) || (strategy == SearchType.FocusedNonRecursive && currentPath == Kvp.Value.ToRecord().Path)))
                     .Select(Kvp => Kvp.Value.ToRecord())
                     .ToList();
 
