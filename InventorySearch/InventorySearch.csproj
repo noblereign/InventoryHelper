@@ -1,100 +1,73 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"
-            Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"/>
-    <PropertyGroup>
-        <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-        <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-        <ProjectGuid>{23B1359D-6C62-42CC-8E34-8FB123602811}</ProjectGuid>
-        <OutputType>Library</OutputType>
-        <AppDesignerFolder>Properties</AppDesignerFolder>
-        <RootNamespace>InventoryHelper</RootNamespace>
-        <AssemblyName>InventoryHelper</AssemblyName>
-        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-        <FileAlignment>512</FileAlignment>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <PlatformTarget>AnyCPU</PlatformTarget>
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\Debug\</OutputPath>
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-        <PlatformTarget>AnyCPU</PlatformTarget>
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\Release\</OutputPath>
-        <DefineConstants>TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-    </PropertyGroup>
-    <PropertyGroup>
-      <PostBuildEvent>copy "E:\GithubClones\InventorySearch\InventorySearch\bin\Debug\InventoryHelper.dll" "D:\SteamLibrary\steamapps\common\Resonite\rml_mods\HotReloadMods\InventoryHelper.dll"
-copy "E:\GithubClones\InventorySearch\InventorySearch\bin\Debug\InventoryHelper.dll" "D:\SteamLibrary\steamapps\common\Resonite\rml_mods\InventoryHelper.dll"</PostBuildEvent>
-    </PropertyGroup>
-    <ItemGroup>
-        <Reference Include="0Harmony">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\MonkeyLoader\0Harmony.dll</HintPath>
-        </Reference>
-        <Reference Include="Assembly-CSharp">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\Assembly-CSharp.dll</HintPath>
-        </Reference>
-        <Reference Include="ColorLUT">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\ColorLUT.dll</HintPath>
-        </Reference>
-        <Reference Include="Elements.Assets">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\Elements.Assets.dll</HintPath>
-        </Reference>
-        <Reference Include="Elements.Core">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\Elements.Core.dll</HintPath>
-        </Reference>
-        <Reference Include="Elements.Quantity">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\Elements.Quantity.dll</HintPath>
-        </Reference>
-        <Reference Include="FrooxEngine">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\FrooxEngine.dll</HintPath>
-        </Reference>
-        <Reference Include="FrooxEngine.Store">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\FrooxEngine.Store.dll</HintPath>
-        </Reference>
-        <Reference Include="FrooxEngine.Weaver">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\Resonite_Data\Managed\FrooxEngine.Weaver.dll</HintPath>
-        </Reference>
-        <Reference Include="Microsoft.CSharp" />
-        <Reference Include="MonkeyLoader">
-          <HintPath>D:\SteamLibrary\steamapps\common\Resonite\MonkeyLoader\MonkeyLoader.dll</HintPath>
-        </Reference>
-        <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-          <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-        </Reference>
-        <Reference Include="ResoniteModLoader">
-          <HintPath>C:\Users\Back Off\Downloads\ResoniteModLoader.dll</HintPath>
-        </Reference>
-        <Reference Include="System"/>
-        <Reference Include="System.Core"/>
-        <Reference Include="System.Data"/>
-        <Reference Include="System.Xml"/>
-    </ItemGroup>
-    <ItemGroup>
-        <Compile Include="Class1.cs"/>
-        <Compile Include="Helpers.cs" />
-        <Compile Include="Properties\AssemblyInfo.cs"/>
-    </ItemGroup>
-    <ItemGroup>
-      <None Include="App.config" />
-      <None Include="packages.config" />
-    </ItemGroup>
-    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
-    <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-         Other similar extension points exist, see Microsoft.Common.targets.
-    <Target Name="BeforeBuild">
-    </Target>
-    <Target Name="AfterBuild">
-    </Target>
-    -->
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<RootNamespace>InventoryHelper</RootNamespace>
+		<AssemblyName>InventoryHelper</AssemblyName>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<TargetFramework>net9.0</TargetFramework>
+		<FileAlignment>512</FileAlignment>
+		<LangVersion>10.0</LangVersion>
+		<Nullable>enable</Nullable>
+		<Deterministic>true</Deterministic>
+		<!-- Change CopyToMods to true if you'd like builds to be moved into the Mods folder automatically-->
+		<CopyToMods Condition="'$(CopyToMods)'==''">true</CopyToMods>
+		<DebugType Condition="'$(Configuration)'=='Debug'">embedded</DebugType>
+	</PropertyGroup>
 
+	<PropertyGroup Condition="'$(ResonitePath)'==''">
+		<!-- If you don't want to provide a ResonitePath in dotnet build, you can specify one here -->
+		<ResonitePath>$(MSBuildThisFileDirectory)Resonite/</ResonitePath>
+		<ResonitePath Condition="Exists('C:\Program Files (x86)\Steam\steamapps\common\Resonite\')">C:\Program Files (x86)\Steam\steamapps\common\Resonite\</ResonitePath>
+    <ResonitePath Condition="Exists('$(HOME)/.steam/steam/steamapps/common/Resonite/')">$(HOME)/.steam/steam/steamapps/common/Resonite/</ResonitePath>
+    <ResonitePath Condition="Exists('P:\SteamLibrary\steamapps\common\Resonite\')">P:\SteamLibrary\steamapps\common\Resonite\</ResonitePath>
+	</PropertyGroup>
+
+	<ItemGroup>
+    <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3" PrivateAssets="all" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <Reference Include="0Harmony">
+      <HintPath>$(ResonitePath)rml_libs\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="Elements.Assets">
+      <HintPath>$(ResonitePath)Elements.Assets.dll</HintPath>
+    </Reference>
+    <Reference Include="Elements.Core">
+      <HintPath>$(ResonitePath)Elements.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Elements.Quantity">
+      <HintPath>$(ResonitePath)Elements.Quantity.dll</HintPath>
+    </Reference>
+    <Reference Include="FrooxEngine">
+      <HintPath>$(ResonitePath)FrooxEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="FrooxEngine.Store">
+      <HintPath>$(ResonitePath)FrooxEngine.Store.dll</HintPath>
+    </Reference>
+    <Reference Include="FrooxEngine.Weaver">
+      <HintPath>$(ResonitePath)FrooxEngine.Weaver.dll</HintPath>
+    </Reference>
+    <Reference Include="Renderite.Shared">
+      <HintPath>$(ResonitePath)Renderite.Shared.dll</HintPath>
+    </Reference>
+    <Reference Include="ResoniteHotReloadLib">
+      <HintPath>$(ResonitePath)rml_libs\ResoniteHotReloadLib.dll</HintPath>
+    </Reference>
+    <Reference Include="ResoniteModLoader">
+      <HintPath>$(ResonitePath)Libraries\ResoniteModLoader.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(ResonitePath)Renderer\Renderite.Renderer_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="ColorLUT">
+      <HintPath>$(ResonitePath)ColorLUT.dll</HintPath>
+    </Reference>
+	</ItemGroup>
+  
+  <PropertyGroup>
+    <PostBuildEvent Condition="Exists('P:\SteamLibrary\steamapps\common\Resonite\rml_mods\HotReloadMods\')">copy /Y "$(TargetDir)$(AssemblyName).dll" "P:\SteamLibrary\steamapps\common\Resonite\rml_mods\HotReloadMods\$(AssemblyName).dll</PostBuildEvent>
+  </PropertyGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(CopyToMods)'=='true'">
+    <Message Text="Attempting to copy $(TargetFileName) to $(ResonitePath)rml_mods" Importance="high" />
+    <Copy SourceFiles="$(TargetDir)$(TargetFileName)" DestinationFolder="$(ResonitePath)rml_mods" ContinueOnError="true" />
+	</Target>
 </Project>
