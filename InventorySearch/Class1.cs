@@ -16,10 +16,12 @@ namespace InventoryHelper
 {
     public class CoreSearch : ResoniteMod
     {
+        internal const string VERSION_CONSTANT = "3.0.0";
         public override string Name => "InventoryHelper";
-        public override string Author => "kaan";
-        public override string Version => "1.0.0";
-        public override string Link => "https://github.com/ResoniteMods/InventorySearch";
+        public override string Author => "kaan, Noble";
+        public override string Version => VERSION_CONSTANT;
+        public override string Link => "https://github.com/noblereign/InventorySearch";
+        const string harmonyId = "dev.kaan.InventorySearch";
 
         private static Dictionary<string, SerializableRecord> _cache = new Dictionary<string, SerializableRecord>();
 
@@ -44,14 +46,14 @@ namespace InventoryHelper
 
         /*static void BeforeHotReload()
         {
-            har.UnpatchAll("dev.kaan.InventorySearch");
+            har.UnpatchAll(harmonyId);
             // Record yeah = new();
             // CopyItemButton.LocalPressed -= TransferItemsButtonOnLocalPressed;
         }
 
         static void OnHotReload(ResoniteMod modInstance)
         {
-            har = new Harmony("dev.kaan.InventorySearch");
+            har = new Harmony(harmonyId);
             har.PatchAll();
 
             Config = modInstance.GetConfiguration();
@@ -64,7 +66,7 @@ namespace InventoryHelper
 
         public override void OnEngineInit()
         {
-            har = new Harmony("dev.kaan.InventorySearch");
+            har = new Harmony(harmonyId);
             har.PatchAll();
 
             Config = GetConfiguration();
