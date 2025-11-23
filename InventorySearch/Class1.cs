@@ -18,7 +18,7 @@ namespace InventoryHelper
     {
         internal const string VERSION_CONSTANT = "3.0.0";
         public override string Name => "InventoryHelper";
-        public override string Author => "kaan, Noble";
+        public override string Author => "Noble, kaan";
         public override string Version => VERSION_CONSTANT;
         public override string Link => "https://github.com/noblereign/InventorySearch";
         const string harmonyId = "dev.kaan.InventorySearch";
