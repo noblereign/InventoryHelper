@@ -341,7 +341,9 @@ namespace InventoryHelper
                 var SearchTerm = TextField.ToLower();
 
                 var SearchResults = _cache
-                    .Where(Kvp => Kvp.Value.Name.ToLower().Contains(SearchTerm))
+                    .Where(Kvp => Kvp.Value != null
+                                && !string.IsNullOrEmpty(Kvp.Value.Name)
+                                && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower()))
                     .Select(Kvp => Kvp.Value.ToRecord())
                     .ToList();
 
