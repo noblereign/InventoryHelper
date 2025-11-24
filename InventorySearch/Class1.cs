@@ -426,17 +426,6 @@ namespace InventoryHelper
 
                 var currentPath = PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory.Path : PreviousTempDirectory.ParentDirectory.Path;
 
-                //var SearchResults = _cache
-                //    .Where(Kvp => Kvp.Value != null
-                //                && !string.IsNullOrEmpty(Kvp.Value.Name)
-                //                && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
-                //                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && Kvp.Value.Path.Contains(currentPath)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
-                //    .Select(Kvp => Kvp.Value.ToRecord())
-                //    .ToList();
-
-                //var Records = new List<Record>(SearchResults);
-                //var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
-                Debug("Performing search...");
                 var AllResults = _cache
                     .Where(Kvp => Kvp.Value != null
                                 && !string.IsNullOrEmpty(Kvp.Value.Name)
@@ -444,26 +433,19 @@ namespace InventoryHelper
                                 && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && Kvp.Value.Path.Contains(currentPath)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
                     .Select(Kvp => Kvp.Value)
                     .ToLookup(item => item is SerializableRecordDirectory);
-                Debug("Discovering items...");
+
                 var SearchResults = AllResults[false]
                     .Select(item => item.ToRecord())
                     .ToList();
-                Debug("Discovering folders...");
+
                 var SearchResultsDirs = AllResults[true]
                     .Cast<SerializableRecordDirectory>()
                     .Select(item => item.ToRecordDirectory(InventoryBrowser.CurrentDirectory))
                     .ToList();
 
-                Debug("Creating lists...");
                 var Records = new List<Record>(SearchResults);
                 var SubDirs = new List<RecordDirectory>(SearchResultsDirs);
 
-
-                //var SearchResultsDirs = SubDirs
-                //    .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
-
-                // var InventoryAdd = SearchResultsDirs.ToList();
-                Debug("Putting it all together...");
                 var NewDir = new RecordDirectory(Engine.Current, SubDirs, Records);
                 
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.NotLoaded);
@@ -492,7 +474,6 @@ namespace InventoryHelper
 
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
                 _ = NewDir.EnsureFullyLoaded();
-                Debug("Search is done!");
             };
         }
 
