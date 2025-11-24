@@ -25,6 +25,7 @@ namespace InventoryHelper
         const string harmonyId = "dev.kaan.InventorySearch";
 
         private static Dictionary<string, SerializableRecord> _cache = new Dictionary<string, SerializableRecord>();
+        private static RecordConverter _cacheConverter = new RecordConverter();
 
         public enum SearchType
         {
@@ -167,18 +168,20 @@ namespace InventoryHelper
                 if (SubdirectoriesField == null) return;
 
                 var Subdirectories = (IEnumerable)SubdirectoriesField.GetValue(directory);
-                foreach (var Subdirectory in Subdirectories)
+                foreach (RecordDirectory Subdirectory in Subdirectories)
                 {
-                    //var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
-                    //if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
+                    var record = Subdirectory.EntryRecord;
 
-                    //var serializableRecord = new SerializableRecord(record);
-                    //_cache[id] = serializableRecord;
+                    var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
+                    if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
 
-                    //if (Config!.GetValue(DebugLogging))
-                    //{
-                    //    Debug($"Cached record: {id}, {serializableRecord.Name}");
-                    //}
+                    var serializableRecordDirectory = new SerializableRecordDirectory(Subdirectory.EntryRecord);
+                    _cache[id] = serializableRecordDirectory;
+
+                    if (Config!.GetValue(DebugLogging))
+                    {
+                        Debug($"Cached subdirectory: {id}, {serializableRecordDirectory.Name}");
+                    }
 
                     CacheDirectoryRecords(Subdirectory);
                 }
@@ -210,7 +213,7 @@ namespace InventoryHelper
             try
             {
                 var json = File.ReadAllText(Config.GetValue(CacheConfig));
-                _cache = JsonConvert.DeserializeObject<Dictionary<string, SerializableRecord>>(json);
+                _cache = JsonConvert.DeserializeObject<Dictionary<string, SerializableRecord>>(json, _cacheConverter);
                 // Console.WriteLine($"Cache loaded from file. Entries: {_cache.Count}");
             }
             catch (Exception e)
@@ -422,23 +425,45 @@ namespace InventoryHelper
 
                 var currentPath = InventoryBrowser.CurrentDirectory.Path;
 
-                var SearchResults = _cache
+                //var SearchResults = _cache
+                //    .Where(Kvp => Kvp.Value != null
+                //                && !string.IsNullOrEmpty(Kvp.Value.Name)
+                //                && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
+                //                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && Kvp.Value.Path.Contains(currentPath)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
+                //    .Select(Kvp => Kvp.Value.ToRecord())
+                //    .ToList();
+
+                //var Records = new List<Record>(SearchResults);
+                //var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
+                Debug("Performing search...");
+                var AllResults = _cache
                     .Where(Kvp => Kvp.Value != null
                                 && !string.IsNullOrEmpty(Kvp.Value.Name)
                                 && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
                                 && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && Kvp.Value.Path.Contains(currentPath)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
-                    .Select(Kvp => Kvp.Value.ToRecord())
+                    .Select(Kvp => Kvp.Value)
+                    .ToLookup(item => item is SerializableRecordDirectory);
+                Debug("Discovering items...");
+                var SearchResults = AllResults[false]
+                    .Select(item => item.ToRecord())
+                    .ToList();
+                Debug("Discovering folders...");
+                var SearchResultsDirs = AllResults[true]
+                    .Cast<SerializableRecordDirectory>()
+                    .Select(item => item.ToRecordDirectory(InventoryBrowser.CurrentDirectory))
                     .ToList();
 
+                Debug("Creating lists...");
                 var Records = new List<Record>(SearchResults);
-                var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
-                
-                var SearchResultsDirs = SubDirs
-                    .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
+                var SubDirs = new List<RecordDirectory>(SearchResultsDirs);
 
-                var InventoryAdd = SearchResultsDirs.ToList();
-                
-                var NewDir = new RecordDirectory(Engine.Current, InventoryAdd.ToList(), Records);
+
+                //var SearchResultsDirs = SubDirs
+                //    .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
+
+                // var InventoryAdd = SearchResultsDirs.ToList();
+                Debug("Putting it all together...");
+                var NewDir = new RecordDirectory(Engine.Current, SubDirs, Records);
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.NotLoaded);
                 SetPropertyValue(NewDir, "Name", "Search Results");
                 SetPropertyValue(NewDir, "ParentDirectory", InventoryBrowser.CurrentDirectory);
@@ -463,6 +488,7 @@ namespace InventoryHelper
 
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
                 _ = NewDir.EnsureFullyLoaded();
+                Debug("Search is done!");
             };
         }
 
@@ -495,7 +521,8 @@ namespace InventoryHelper
         }
 
         [Serializable]
-        private class SerializableRecord
+        [JsonConverter(typeof(RecordConverter))]
+        public class SerializableRecord
         {
             public string RecordId { get; set; }
             public string Name { get; set; }
@@ -529,6 +556,43 @@ namespace InventoryHelper
                     ThumbnailURI = ThumbnailURI,
                     Path = Path
                 };
+            }
+        }
+
+        [Serializable]
+        [JsonConverter(typeof(RecordConverter))]
+        public class SerializableRecordDirectory : SerializableRecord
+        {
+            public string OwnerId { get; set; }
+            public string RecordType { get; set; }
+
+            public SerializableRecordDirectory()
+            {
+            }
+
+            public SerializableRecordDirectory(Record record)
+            {
+                RecordId = record.RecordId;
+                Name = record.Name;
+                OwnerName = record.OwnerName;
+                OwnerId = record.OwnerId;
+                Path = record.Path;
+                RecordType = record.RecordType;
+                AssetURI = record.AssetURI;
+            }
+
+            public RecordDirectory ToRecordDirectory(RecordDirectory parent)
+            {
+                Record toRecord = new Record {
+                    RecordId = RecordId,
+                    Name = Name,
+                    OwnerName = OwnerName,
+                    OwnerId = OwnerId,
+                    Path = Path,
+                    RecordType = RecordType,
+                    AssetURI = AssetURI
+                };
+                return new RecordDirectory(toRecord, parent, Engine.Current);
             }
         }
     }
