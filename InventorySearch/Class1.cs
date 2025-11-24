@@ -41,7 +41,7 @@ namespace InventoryHelper
                 "Save InventorySearchCache to a separate location.", () => CacheFilePath);
 
         [AutoRegisterConfigKey]
-        public static readonly ModConfigurationKey<SearchType> SearchStrategy = new ModConfigurationKey<SearchType>("Search Scope", "When searching, what parts of your inventory should be considered?", () => SearchType.EntireInventory);
+        public static readonly ModConfigurationKey<SearchType> SearchStrategy = new ModConfigurationKey<SearchType>("Search Scope", "When searching, what parts of your inventory should be considered?\n\n<color=yellow>NOTE:</color> Caches from before v3.0.0 only support <b>EntireInventory</b>. If you have an older cache, it will be slowly updated to the new format as you navigate through folders.", () => SearchType.EntireInventory);
 
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<bool> DebugLogging = new("Enable debug logging", "Print debug logs when records are cached, copied, pasted, etc? <b>Enabling this may cause sensitive information to be saved to your logs.</b>", () => false);
@@ -145,7 +145,7 @@ namespace InventoryHelper
                     foreach (Record record in Records)
                     {
                         var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
-                        if (id != null && _cache.ContainsKey(id)) continue;
+                        if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
 
                         var serializableRecord = new SerializableRecord(record);
                         _cache[id] = serializableRecord;
@@ -381,7 +381,7 @@ namespace InventoryHelper
                     .Where(Kvp => Kvp.Value != null
                                 && !string.IsNullOrEmpty(Kvp.Value.Name)
                                 && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
-                                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && currentPath.Contains(Kvp.Value.ToRecord().Path)) || (strategy == SearchType.FocusedNonRecursive && currentPath == Kvp.Value.ToRecord().Path)))
+                                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && currentPath.Contains(Kvp.Value.Path)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
                     .Select(Kvp => Kvp.Value.ToRecord())
                     .ToList();
 
@@ -445,6 +445,7 @@ namespace InventoryHelper
             public string OwnerName { get; set; }
             public string AssetURI { get; set; }
             public string ThumbnailURI { get; set; }
+            public string Path { get; set; }
 
             public SerializableRecord()
             {
@@ -457,6 +458,7 @@ namespace InventoryHelper
                 OwnerName = record.OwnerName;
                 AssetURI = record.AssetURI;
                 ThumbnailURI = record.ThumbnailURI;
+                Path = record.Path;
             }
 
             public Record ToRecord()
@@ -468,6 +470,7 @@ namespace InventoryHelper
                     OwnerName = OwnerName,
                     AssetURI = AssetURI,
                     ThumbnailURI = ThumbnailURI,
+                    Path = Path
                 };
             }
         }
