@@ -142,7 +142,6 @@ namespace InventoryHelper
                     Warn("Directory has no owner, skipping");
                     return;
                 }
-                
 
                 var RecordsField = directory.GetType().GetField("records", AccessTools.all);
                 var SubdirectoriesField = directory.GetType().GetField("subdirectories", AccessTools.all);
@@ -166,9 +165,21 @@ namespace InventoryHelper
                 }
 
                 if (SubdirectoriesField == null) return;
+
                 var Subdirectories = (IEnumerable)SubdirectoriesField.GetValue(directory);
                 foreach (var Subdirectory in Subdirectories)
                 {
+                    //var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
+                    //if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
+
+                    //var serializableRecord = new SerializableRecord(record);
+                    //_cache[id] = serializableRecord;
+
+                    //if (Config!.GetValue(DebugLogging))
+                    //{
+                    //    Debug($"Cached record: {id}, {serializableRecord.Name}");
+                    //}
+
                     CacheDirectoryRecords(Subdirectory);
                 }
             }
@@ -249,8 +260,8 @@ namespace InventoryHelper
 
             string SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Records
-                    where SelectedItem.RecordId == record.RecordId
-                    select record.RecordId).FirstOrDefault();
+                 where SelectedItem.RecordId == record.RecordId
+                 select record.RecordId).FirstOrDefault();
 
             if (SelectedRecordId == null)
             {
@@ -279,7 +290,7 @@ namespace InventoryHelper
             }
 
             Msg(CachedInventory.CurrentDirectory.Name);
-            
+
             if (!_cache.ContainsKey("CopiedItem"))
             {
                 NotificationMessage.SpawnTextMessage($"No item copied!", colorX.Red);
@@ -346,9 +357,35 @@ namespace InventoryHelper
                 break; // this calls many times. so breaking may do good.
             }
         }
-        
-         private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
-         {
+
+        private static string? RemovePathRoot(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            int firstSlashIndex = path.IndexOfAny(new char[] { '\\', '/' });
+
+            if (firstSlashIndex == -1)
+            {
+                return null;
+            }
+
+            return path.Substring(firstSlashIndex + 1);
+        }
+
+        private static string? GetParentPath(string path)
+        {
+            int lastSlashIndex = path.LastIndexOfAny(new char[2] { '\\', '/' });
+
+            if (lastSlashIndex == -1)
+            {
+                return null;
+            }
+
+            return RemovePathRoot(path.Substring(0, lastSlashIndex)); // unsure if this works for group inventories, i'm not in one to check...but it's similar to what's in InventoryBrowser, so
+        }
+
+        private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
+        {
             if (LocalTextField != null) return;
 
             RadiantUI_Constants.SetupEditorStyle(UI, extraPadding: true);
@@ -374,11 +411,11 @@ namespace InventoryHelper
             layoutElement.PreferredWidth.Value = 200f;
             layoutElement.PreferredHeight.Value = 50f;
 
-            LocalTextField.Editor.Target.LocalEditingFinished += (Change) =>
+            LocalTextField.Editor.Target.LocalEditingFinished += async (Change) =>
             {
                 var TextField = LocalTextField.Editor.Target.Text.Target.Text;
                 if (string.IsNullOrEmpty(TextField)) return;
-                
+
                 var SearchTerm = TextField.ToLower();
 
                 var strategy = Config!.GetValue(SearchStrategy);
@@ -395,25 +432,37 @@ namespace InventoryHelper
 
                 var Records = new List<Record>(SearchResults);
                 var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
-                //var ParentDirCache = InventoryBrowser.CurrentDirectory.ParentDirectory;
-                //var Inventory = new RecordDirectory(Engine.Current.Cloud.CurrentUserID, "Inventory", Engine.Current);
                 
                 var SearchResultsDirs = SubDirs
                     .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
 
                 var InventoryAdd = SearchResultsDirs.ToList();
-                //InventoryAdd.Add(Inventory);
                 
                 var NewDir = new RecordDirectory(Engine.Current, InventoryAdd.ToList(), Records);
-                NewDir.EnsureFullyLoaded();
-
+                SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.NotLoaded);
                 SetPropertyValue(NewDir, "Name", "Search Results");
                 SetPropertyValue(NewDir, "ParentDirectory", InventoryBrowser.CurrentDirectory);
 
-                // SetPropertyValue(Inventory, "Name", "Inventory");
-                // SetPropertyValue(Inventory, "ParentDirectory", ParentDirCache);
-
                 InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
+
+                var rootDirectory = NewDir.GetRootDirectory();
+                
+                foreach (RecordDirectory subdir in NewDir.Subdirectories)
+                {
+                    string parentPath = GetParentPath(subdir.Path) ?? NewDir.ParentDirectory.Path;
+                    if (parentPath != rootDirectory.Path)
+                    {
+                        RecordDirectory originalParent = await rootDirectory.GetSubdirectoryAtPath(parentPath);
+                        SetPropertyValue(subdir, "ParentDirectory", originalParent);
+                    }
+                    else
+                    {
+                        SetPropertyValue(subdir, "ParentDirectory", rootDirectory);
+                    }
+                }
+
+                SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
+                _ = NewDir.EnsureFullyLoaded();
             };
         }
 
