@@ -136,6 +136,14 @@ namespace InventoryHelper
                     return;
                 }
 
+                RecordDirectory typedDirectory = (RecordDirectory)directory;
+                if (typedDirectory.OwnerId == null || typedDirectory.OwnerId == "NONE")
+                {
+                    Warn("Directory has no owner, skipping");
+                    return;
+                }
+                
+
                 var RecordsField = directory.GetType().GetField("records", AccessTools.all);
                 var SubdirectoriesField = directory.GetType().GetField("subdirectories", AccessTools.all);
 
@@ -401,7 +409,7 @@ namespace InventoryHelper
 
                 SetPropertyValue(NewDir, "Name", "Search Results");
                 SetPropertyValue(NewDir, "ParentDirectory", InventoryBrowser.CurrentDirectory);
-                
+
                 // SetPropertyValue(Inventory, "Name", "Inventory");
                 // SetPropertyValue(Inventory, "ParentDirectory", ParentDirCache);
 
