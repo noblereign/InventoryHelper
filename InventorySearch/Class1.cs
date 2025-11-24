@@ -11,6 +11,7 @@ using FrooxEngine.UIX;
 using HarmonyLib;
 // using ResoniteHotReloadLib;
 using ResoniteModLoader;
+using System.Text;
 
 namespace InventoryHelper
 {
@@ -45,14 +46,14 @@ namespace InventoryHelper
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<bool> DebugLogging = new("Enable debug logging", "Print debug logs when records are cached, copied, pasted, etc? <b>Enabling this may cause sensitive information to be saved to your logs.</b>", () => false);
 
-        private static ModConfiguration Config;
-        private static TextField LocalTextField;
+        private static ModConfiguration? Config;
+        private static TextField? LocalTextField;
 
-        private static Button CopyItemButton;
-        private static Button PasteItemButton;
-        private static Button CutItemButton;
+        private static Button? CopyItemButton;
+        private static Button? PasteItemButton;
+        private static Button? CutItemButton;
 
-        private static Harmony har;
+        private static Harmony? har;
 
         /*static void BeforeHotReload()
         {
@@ -118,7 +119,7 @@ namespace InventoryHelper
                 verticalLayout.Slot.GetComponent<RectTransform>().OffsetMin.Value = new float2(0, -30);
                 verticalLayout.Slot.GetComponent<RectTransform>().OffsetMax.Value = new float2(-10, -10);
 
-                TextField(ui, "OWO", __instance);
+                TextField(ui, "Search Bar", __instance);
                 Button(ui, "Copy", __instance, __0);
                 Button(ui, "Paste", __instance, __0);
                 Button(ui, "Cut", __instance, __0);
@@ -339,13 +340,15 @@ namespace InventoryHelper
         }
         
          private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
-        {
+         {
+            if (LocalTextField != null) return;
+
             RadiantUI_Constants.SetupEditorStyle(UI, extraPadding: true);
             UI.FitContent(SizeFit.Disabled, SizeFit.MinSize);
             UI.Style.MinHeight = 30;
             //UI.Style.MinWidth = 30;
             UI.PushStyle();
-            LocalTextField = LocalTextField ?? UI.TextField(null, true, "h", true, $"<alpha=#77>Search...");
+            LocalTextField = LocalTextField ?? UI.TextField(null, false, "Search", true, $"<alpha=#77><i>Search...");
 
             LocalTextField.Text.HorizontalAutoSize.Value = true;
             LocalTextField.Text.Size.Value = 39.55418f;
@@ -405,102 +408,6 @@ namespace InventoryHelper
                 InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
             };
         }
-
-        /*private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
-        {
-            RadiantUI_Constants.SetupEditorStyle(UI, extraPadding: true);
-            UI.FitContent(SizeFit.Disabled, SizeFit.MinSize);
-            UI.Style.MinHeight = 30;
-            //UI.Style.MinWidth = 30;
-            UI.PushStyle();
-            LocalTextField = LocalTextField ?? UI.TextField(null, true, "h", true, $"<alpha=#77>Search...");
-
-            LocalTextField.Text.HorizontalAutoSize.Value = true;
-            LocalTextField.Text.Size.Value = 39.55418f;
-            LocalTextField.Text.Color.Value = RadiantUI_Constants.Neutrals.LIGHT;
-            LocalTextField.Text.ParseRichText.Value = false;
-
-            LocalTextField.Editor.Target.FinishHandling.Value = TextEditor.FinishAction.NullOnWhitespace;
-            UI.Style.FlexibleHeight = 1f;
-
-            LocalTextField.Slot.Tag = Tag;
-
-            var buttonRect = LocalTextField.Slot.GetComponent<RectTransform>();
-            var layoutElement = LocalTextField.Slot.AttachComponent<LayoutElement>();
-
-            layoutElement.PreferredWidth.Value = 200f;
-            layoutElement.PreferredHeight.Value = 50f;
-
-            LocalTextField.Editor.Target.LocalEditingFinished += (Change) =>
-            {
-                var TextField = LocalTextField.Editor.Target.Text.Target.Text;
-                if (string.IsNullOrEmpty(TextField)) return;
-
-                var SearchTerm = TextField.ToLower();
-
-                var SearchResults = _cache
-                    .Where(Kvp => Kvp.Value.Name.ToLower().Contains(SearchTerm))
-                    .Select(Kvp => Kvp.Value.ToRecord())
-                    .ToList();
-
-                var SubDirs = new List<RecordDirectory>(InventoryBrowser.CurrentDirectory.Subdirectories);
-                var ParentDirCache = InventoryBrowser.CurrentDirectory.ParentDirectory;
-
-                var SearchResultsDirs = SubDirs
-                    .Where(Kvp => Kvp.Name.ToLower().Contains(SearchTerm));
-
-                var NewDir = new RecordDirectory(Engine.Current, new List<RecordDirectory>(SearchResultsDirs),
-                    new List<Record>());
-                NewDir.EnsureFullyLoaded();
-
-                SetPropertyValue(NewDir, "Name", "Searched Inventory");
-                SetPropertyValue(NewDir, "ParentDirectory", ParentDirCache);
-
-                InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
-
-                PopulateRecordsIncrementally(NewDir, SearchResults);
-            };
-        }
-
-        private static void PopulateRecordsIncrementally(RecordDirectory NewDir, List<Record> SearchResults)
-        {
-            const int batchSize = 10;
-            var totalRecords = SearchResults.Count;
-
-            var recordsField =
-                typeof(RecordDirectory).GetField("records", AccessTools.all);
-            if (recordsField == null)
-                throw new InvalidOperationException("Cannot find 'records' field in RecordDirectory");
-
-            var recordsList = (List<Record>)recordsField.GetValue(NewDir);
-            var concurrentRecordsList = new ConcurrentBag<Record>(recordsList);
-
-            var totalBatches = (totalRecords + batchSize - 1) / batchSize;
-
-            var tasks = new Task[totalBatches];
-
-            for (int i = 0; i < totalBatches; i++)
-            {
-                var batchStart = i * batchSize;
-                tasks[i] = Task.Run(() =>
-                {
-                    var batch = SearchResults.Skip(batchStart).Take(batchSize);
-                    foreach (var record in batch)
-                    {
-                        concurrentRecordsList.Add(record);
-                        Msg(record.Name);
-                    }
-                });
-            }
-
-            Task.WhenAll(tasks).ContinueWith(_ =>
-            {
-                var finalList = concurrentRecordsList.ToList();
-                recordsField.SetValue(NewDir, finalList);
-            });
-            
-        }*/
-
 
         private static void SetPropertyValue<T>(T obj, string propertyName, object value)
         {
