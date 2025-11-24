@@ -389,7 +389,7 @@ namespace InventoryHelper
                     .Where(Kvp => Kvp.Value != null
                                 && !string.IsNullOrEmpty(Kvp.Value.Name)
                                 && Kvp.Value.Name.ToLower().Contains(SearchTerm.ToLower())
-                                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && currentPath.Contains(Kvp.Value.Path)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
+                                && (strategy == SearchType.EntireInventory || (strategy == SearchType.FocusedRecursive && Kvp.Value.Path != null && Kvp.Value.Path.Contains(currentPath)) || (strategy == SearchType.FocusedNonRecursive && Kvp.Value.Path != null && currentPath == Kvp.Value.Path)))
                     .Select(Kvp => Kvp.Value.ToRecord())
                     .ToList();
 
