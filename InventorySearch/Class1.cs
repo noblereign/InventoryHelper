@@ -387,6 +387,7 @@ namespace InventoryHelper
             return RemovePathRoot(path.Substring(0, lastSlashIndex)); // unsure if this works for group inventories, i'm not in one to check...but it's similar to what's in InventoryBrowser, so
         }
 
+        private static RecordDirectory? PreviousTempDirectory;
         private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
         {
             if (LocalTextField != null) return;
@@ -423,7 +424,7 @@ namespace InventoryHelper
 
                 var strategy = Config!.GetValue(SearchStrategy);
 
-                var currentPath = InventoryBrowser.CurrentDirectory.Path;
+                var currentPath = PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory.Path : PreviousTempDirectory.ParentDirectory.Path;
 
                 //var SearchResults = _cache
                 //    .Where(Kvp => Kvp.Value != null
@@ -464,9 +465,12 @@ namespace InventoryHelper
                 // var InventoryAdd = SearchResultsDirs.ToList();
                 Debug("Putting it all together...");
                 var NewDir = new RecordDirectory(Engine.Current, SubDirs, Records);
+                
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.NotLoaded);
                 SetPropertyValue(NewDir, "Name", "Search Results");
-                SetPropertyValue(NewDir, "ParentDirectory", InventoryBrowser.CurrentDirectory);
+                SetPropertyValue(NewDir, "ParentDirectory", PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory : PreviousTempDirectory.ParentDirectory);
+
+                PreviousTempDirectory = NewDir;
 
                 InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
 
