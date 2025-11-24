@@ -415,7 +415,7 @@ namespace InventoryHelper
             layoutElement.PreferredWidth.Value = 200f;
             layoutElement.PreferredHeight.Value = 50f;
 
-            LocalTextField.Editor.Target.LocalEditingFinished += async (Change) =>
+            LocalTextField.Editor.Target.LocalSubmitPressed += async (Change) =>
             {
                 var TextField = LocalTextField.Editor.Target.Text.Target.Text;
                 if (string.IsNullOrEmpty(TextField)) return;
