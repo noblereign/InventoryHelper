@@ -1,18 +1,17 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+﻿using Elements.Assets;
 using Elements.Core;
-using Newtonsoft.Json;
 using FrooxEngine;
 using FrooxEngine.Store;
 using FrooxEngine.UIX;
 using HarmonyLib;
+using Newtonsoft.Json;
 // using ResoniteHotReloadLib;
 using ResoniteModLoader;
-using Elements.Assets;
-using Record = FrooxEngine.Store.Record;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace InventoryHelper
 {
@@ -110,25 +109,28 @@ namespace InventoryHelper
             {
 
                 var selectionIsCuttable = true;
-                var SelectedDirectory = typeof(InventoryItemUI).GetField("Directory", AccessTools.all)?
-                    .GetValue(CachedInventory.SelectedInventoryItem) as RecordDirectory;
-
-                if (SelectedDirectory != null)
+                if (CachedInventory.SelectedInventoryItem != null)
                 {
-                    selectionIsCuttable = SelectedDirectory.IsLink == true;
-                }
+                    var SelectedDirectory = typeof(InventoryItemUI).GetField("Directory", AccessTools.all)?
+                                        .GetValue(CachedInventory.SelectedInventoryItem) as RecordDirectory;
 
+                    if (SelectedDirectory != null)
+                    {
+                        selectionIsCuttable = SelectedDirectory.IsLink == true;
+                    }
+                }
+                
                 if (CopyItemButton != null)
                 {
                     CopyItemButton.Enabled = browser.SelectedInventoryItem != null;
                 }
                 if (PasteItemButton != null)
                 {
-                    PasteItemButton.Enabled = (__0.CanWrite && _cache.ContainsKey("CopiedItem"));
+                    PasteItemButton.Enabled = (__0 != null && __0.CanWrite && _cache.ContainsKey("CopiedItem"));
                 }
                 if (CutItemButton != null)
                 {
-                    CutItemButton.Enabled = __0.CanWrite && browser.SelectedInventoryItem != null && selectionIsCuttable;
+                    CutItemButton.Enabled = __0 != null && __0.CanWrite && browser.SelectedInventoryItem != null && selectionIsCuttable;
                 }
             }
         }
@@ -138,11 +140,31 @@ namespace InventoryHelper
         {
             [HarmonyPostfix]
             [HarmonyPatch(typeof(InventoryBrowser), nameof(InventoryBrowser.Open))]
-            public static void OnOpen(ref RecordDirectory __0, ref InventoryBrowser __instance,
-                SyncRef<Slot> ____buttonsRoot)
+            public static void OnOpen(ref RecordDirectory __0, ref InventoryBrowser __instance, SyncRef<Slot> ____buttonsRoot)
             {
                 CacheDirectoryRecords(__0);
                 SaveCacheToFile();
+            }
+
+            [HarmonyPostfix]
+            [HarmonyPatch(typeof(InventoryBrowser), nameof(InventoryBrowser.OpenDirectory))]
+            public async static void OnDirectoryOpening(RecordDirectory directory, InventoryBrowser __instance)
+            {
+                var doDebugLogging = Config!.GetValue(DebugLogging);
+
+                if (doDebugLogging) 
+                {
+                    Debug($"Waiting for directory {directory.Name}...");
+                }
+
+                await directory.EnsureFullyLoaded();
+                if (directory == __instance.CurrentDirectory)
+                {
+                    Debug("Directory loaded, attempting to cache");
+                    CacheDirectoryRecords(directory);
+                    SaveCacheToFile();
+                    Debug("Directory has been cached");
+                }
             }
 
             [HarmonyPostfix]
@@ -170,6 +192,7 @@ namespace InventoryHelper
 
                 CacheDirectoryRecords(__0);
                 SaveCacheToFile();
+                DoUIUpdate(ref CachedInventory);
             }
 
             [HarmonyPostfix]
