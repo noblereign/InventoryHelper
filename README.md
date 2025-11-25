@@ -21,6 +21,9 @@ Based upon the [InventorySearch](https://github.com/ResoniteMods/InventorySearch
 ### Video demo
 ![Small demonstration of searching and moving files around using the mod.](/readme-media/demo.mp4)
 
+https://github.com/user-attachments/assets/e9bfc4c9-5ec7-4238-9c04-d136129110cd
+
+
 ## Installation
 1. Install [ResoniteModLoader](https://github.com/resonite-modding-group/ResoniteModLoader).
 2. Place [InventoryHelper.dll](https://github.com/noblereign/InventoryHelper/releases/latest/download/InventoryHelper.dll) into your `rml_mods` folder. This folder should be at `C:\Program Files (x86)\Steam\steamapps\common\Resonite\rml_mods` for a default install. You can create it if it's missing, or if you launch the game once with ResoniteModLoader installed it will create this folder for you.
