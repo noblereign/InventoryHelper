@@ -11,7 +11,8 @@ using FrooxEngine.UIX;
 using HarmonyLib;
 // using ResoniteHotReloadLib;
 using ResoniteModLoader;
-using System.Text;
+using Elements.Assets;
+using Record = FrooxEngine.Store.Record;
 
 namespace InventoryHelper
 {
@@ -43,6 +44,9 @@ namespace InventoryHelper
 
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<SearchType> SearchStrategy = new ModConfigurationKey<SearchType>("Search Scope", "When searching, what parts of your inventory should be considered?\n\n<color=yellow>NOTE:</color> Caches from before v3.0.0 only support <b>EntireInventory</b>. If you have an older cache, it will be slowly updated to the new format as you navigate through folders.", () => SearchType.EntireInventory);
+
+        [AutoRegisterConfigKey]
+        public static readonly ModConfigurationKey<bool> RememberPasteOnLaunch = new("Remember copied item on launch", "Should items in the 'clipboard' persist across launches?", () => false);
 
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<bool> DebugLogging = new("Enable debug logging", "Print debug logs when records are cached, copied, pasted, etc? <b>Enabling this may cause sensitive information to be saved to your logs.</b>", () => false);
@@ -86,8 +90,47 @@ namespace InventoryHelper
 
             LoadCacheFromFile();
 
-            Debug("I reloaded uwu");
+            if (Config!.GetValue(RememberPasteOnLaunch) != true)
+            {
+                if (_cache.ContainsKey("CopiedItem"))
+                {
+                    _cache.Remove("CopiedItem");
+                }
+                if (_cache.ContainsKey("CutItem"))
+                {
+                    _cache.Remove("CutItem");
+                }
+            }
             // HotReloader.RegisterForHotReload(this);
+        }
+        private static void DoUIUpdate(ref InventoryBrowser browser)
+        {
+            var __0 = browser.CurrentDirectory;
+            if (browser.CanInteract(browser.LocalUser))
+            {
+
+                var selectionIsCuttable = true;
+                var SelectedDirectory = typeof(InventoryItemUI).GetField("Directory", AccessTools.all)?
+                    .GetValue(CachedInventory.SelectedInventoryItem) as RecordDirectory;
+
+                if (SelectedDirectory != null)
+                {
+                    selectionIsCuttable = SelectedDirectory.IsLink == true;
+                }
+
+                if (CopyItemButton != null)
+                {
+                    CopyItemButton.Enabled = browser.SelectedInventoryItem != null;
+                }
+                if (PasteItemButton != null)
+                {
+                    PasteItemButton.Enabled = (__0.CanWrite && _cache.ContainsKey("CopiedItem"));
+                }
+                if (CutItemButton != null)
+                {
+                    CutItemButton.Enabled = __0.CanWrite && browser.SelectedInventoryItem != null && selectionIsCuttable;
+                }
+            }
         }
 
         [HarmonyPatch(typeof(InventoryBrowser))]
@@ -129,6 +172,13 @@ namespace InventoryHelper
                 SaveCacheToFile();
             }
 
+            [HarmonyPostfix]
+            [HarmonyPatch(typeof(InventoryBrowser), "OnChanges")]
+            public static void OnUIUpdated(ref InventoryBrowser __instance)
+            {
+                DoUIUpdate(ref __instance);
+            }
+
             private static void CacheDirectoryRecords(object directory)
             {
                 if (directory == null)
@@ -155,12 +205,25 @@ namespace InventoryHelper
                         var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
                         if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
 
-                        var serializableRecord = new SerializableRecord(record);
-                        _cache[id] = serializableRecord;
-
-                        if (Config!.GetValue(DebugLogging))
+                        if (record.RecordType != "directory" && record.RecordType != "link")
                         {
-                            Debug($"Cached record: {id}, {serializableRecord.Name}");
+                            var serializableRecord = new SerializableRecord(record);
+                            _cache[id] = serializableRecord;
+
+                            if (Config!.GetValue(DebugLogging))
+                            {
+                                Debug($"Cached record: {id}, {serializableRecord.Name}, type: {record.RecordType}");
+                            }
+                        }
+                        else // in some cases, subdirectories show up as normal records (like when they're newly made). this is here to catch that
+                        {
+                            var serializableRecordDirectory = new SerializableRecordDirectory(record);
+                            _cache[id] = serializableRecordDirectory;
+
+                            if (Config!.GetValue(DebugLogging))
+                            {
+                                Debug($"Cached record as subdirectory: {id}, {serializableRecordDirectory.Name}");
+                            }
                         }
                     }
                 }
@@ -251,36 +314,70 @@ namespace InventoryHelper
             button.LocalPressed += onPressed;
         }
 
+
+        private static string CleanString(string str)
+        {
+            return new StringRenderTree(str).GetRawString();
+        }
+
         private static void CopyItemButtonOnLocalPressed(IButton button, ButtonEventData eventdata)
         {
             var SelectedItem = typeof(InventoryItemUI).GetField("Item", AccessTools.all)?
                 .GetValue(CachedInventory.SelectedInventoryItem) as Record;
-            if (SelectedItem == null)
+
+            var SelectedDirectory = typeof(InventoryItemUI).GetField("Directory", AccessTools.all)?
+                .GetValue(CachedInventory.SelectedInventoryItem) as RecordDirectory;
+
+            if (SelectedItem == null && SelectedDirectory == null)
             {
-                NotificationMessage.SpawnTextMessage("SelectedItem is null!! Please select an item.", colorX.Red);
+                NotificationMessage.SpawnTextMessage("No copiable item selected!", colorX.Red);
                 return;
             }
 
+            var SelectedObjectRecordId = SelectedItem != null ? SelectedItem.RecordId : (SelectedDirectory != null ? SelectedDirectory.EntryRecord.RecordId : null);
+
+            if (SelectedObjectRecordId == null)
+            {
+                NotificationMessage.SpawnTextMessage("Failed to get Record ID for selected object.", colorX.Red);
+                return;
+            }
+
+            var isDirectory = false;
             string SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Records
-                 where SelectedItem.RecordId == record.RecordId
+                 where SelectedObjectRecordId == record.RecordId
                  select record.RecordId).FirstOrDefault();
 
-            if (SelectedRecordId == null)
+            if (SelectedRecordId == null) // try again but as a directory
             {
-                NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
-                return;
+                isDirectory = true;
+                SelectedRecordId =
+                (from record in CachedInventory.CurrentDirectory.Subdirectories
+                 where SelectedObjectRecordId == record.EntryRecord.RecordId
+                 select record.EntryRecord.RecordId).FirstOrDefault();
+
+                if (SelectedRecordId == null)
+                {
+                    NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
+                    return;
+                }
             }
 
             if (_cache.ContainsKey(SelectedRecordId))
             {
                 _cache["CopiedItem"] = _cache[SelectedRecordId];
-                NotificationMessage.SpawnTextMessage($"Copied item: {_cache[SelectedRecordId].Name}", colorX.Green);
+                if (_cache.ContainsKey("CutItem"))
+                {
+                    _cache.Remove("CutItem");
+                }
+                NotificationMessage.SpawnTextMessage($"Copied: {CleanString(_cache[SelectedRecordId].Name)}", colorX.FromHexCode("#61B9FF"), 0.5f, 3f, 0.25f, 0.5f, 0.14f);
             }
             else
             {
                 Msg($"No entries found for {SelectedRecordId}.");
             }
+
+            DoUIUpdate(ref CachedInventory);
         }
 
         private static void PasteItemButtonOnLocalPressed(IButton button, ButtonEventData eventdata)
@@ -292,7 +389,7 @@ namespace InventoryHelper
                 Debug($" COPIED: {copiedItem} {copiedItem.ToRecord()}");
             }
 
-            Msg(CachedInventory.CurrentDirectory.Name);
+            //Msg(CachedInventory.CurrentDirectory.Name);
 
             if (!_cache.ContainsKey("CopiedItem"))
             {
@@ -300,24 +397,62 @@ namespace InventoryHelper
                 return;
             }
 
-            CachedInventory.CurrentDirectory.AddItem(copiedItem.Name, new Uri(copiedItem.AssetURI),
-                new Uri(copiedItem.ThumbnailURI));
+            var isCut = _cache.TryGetValue("CutItem", out SerializableRecord? value) && value == copiedItem;
+
+            if (isCut) {
+                var id = GetPropertyValue(copiedItem, "RecordId") ?? copiedItem.RecordId;
+                _cache.Remove(id);
+            }
+
+            var cuttingPermitted = true;
+            if (copiedItem is SerializableRecordDirectory copiedItemAsDirectory)
+            {
+                cuttingPermitted = copiedItemAsDirectory.RecordType == "link";
+
+                // links have asset uris while directories don't, so if there isn't one we gotta make it ourselves
+                Uri linkUri = copiedItem.AssetURI != null ? new Uri(copiedItem.AssetURI) : Engine.Current.PlatformProfile.GetRecordUri(copiedItemAsDirectory.OwnerId, copiedItemAsDirectory.RecordId);
+
+                CachedInventory.CurrentDirectory.AddLinkAsync(copiedItem.Name, linkUri);
+            }
+            else
+            {
+                CachedInventory.CurrentDirectory.AddItem(copiedItem.Name, new Uri(copiedItem.AssetURI),
+                    new Uri(copiedItem.ThumbnailURI));
+            }
 
             var recordsField = typeof(RecordDirectory).GetField("records", AccessTools.all);
             if (recordsField != null)
             {
-                var records = (IList)recordsField.GetValue(CachedDir);
-                var recordToRemove = records.Cast<Record>().FirstOrDefault(r => r.RecordId == copiedItem.RecordId);
-                if (recordToRemove != null)
+                if (isCut && cuttingPermitted)
                 {
-                    records.Remove(recordToRemove);
-                    Engine.Current.RecordManager.DeleteRecord(recordToRemove);
-                }
-                else
-                {
-                    if (Config!.GetValue(DebugLogging))
+                    var records = (IList)recordsField.GetValue(CachedDir);
+                    var recordToRemove = records.Cast<Record>().FirstOrDefault(r => r.RecordId == copiedItem.RecordId);
+                    if (recordToRemove != null)
                     {
-                        Warn($"Record with ID {copiedItem.RecordId} not found in CachedDir.Records.");
+                        records.Remove(recordToRemove);
+                        Engine.Current.RecordManager.DeleteRecord(recordToRemove);
+                    }
+                    else
+                    {
+                        // try again as directory
+                        var subdirsField = typeof(RecordDirectory).GetField("subdirectories", AccessTools.all);
+                        if (subdirsField != null)
+                        {
+                            var subdirs = (IList)subdirsField.GetValue(CachedDir);
+                            var subdirToRemove = subdirs.Cast<RecordDirectory>().FirstOrDefault(r => r.EntryRecord.RecordId == copiedItem.RecordId);
+                            if (subdirToRemove != null)
+                            {
+                                subdirs.Remove(subdirToRemove);
+                                Engine.Current.RecordManager.DeleteRecord(subdirToRemove.EntryRecord);
+                            }
+                            else
+                            {
+                                if (Config!.GetValue(DebugLogging))
+                                {
+                                    Warn($"Record with ID {copiedItem.RecordId} not found in CachedDir!");
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -326,8 +461,24 @@ namespace InventoryHelper
                 Warn("Failed to retrieve 'records' field from CachedDir.");
             }
 
-            NotificationMessage.SpawnTextMessage(
-                $"Pasted item: {copiedItem.Name}, Removed {copiedItem.Name} from {CachedDir.Name}", colorX.Green);
+            if (isCut)
+            {
+                if (cuttingPermitted)
+                {
+                    NotificationMessage.SpawnTextMessage($"Moved {CleanString(copiedItem.Name)} from {CleanString(CachedDir.Name)} to {CleanString(CachedInventory.CurrentDirectory.Name)}", colorX.Green, 0.5f, 4.5f, 0.3f, 0.5f, 0.17f);
+                    _cache.Remove("CopiedItem");
+                }
+                else
+                {
+                    NotificationMessage.SpawnTextMessage($"Pasted {CleanString(copiedItem.Name)} into {CleanString(CachedInventory.CurrentDirectory.Name)}", colorX.Green, 0.5f, 3.5f, 0.3f, 0.5f, 0.17f);
+                    NotificationMessage.SpawnTextMessage($"(Cutting isn't permitted on directories)", colorX.Orange, 0.5f, 3.5f, 0.175f, 0.5f, 0.11f);
+                }
+            }
+            else
+            {
+                NotificationMessage.SpawnTextMessage($"Pasted {CleanString(copiedItem.Name)} into {CleanString(CachedInventory.CurrentDirectory.Name)}", colorX.Green, 0.5f, 3.5f, 0.3f, 0.5f, 0.17f);
+            }
+            DoUIUpdate(ref CachedInventory);
         }
 
 
@@ -335,30 +486,78 @@ namespace InventoryHelper
         {
             var SelectedItem = typeof(InventoryItemUI).GetField("Item", AccessTools.all)?
                 .GetValue(CachedInventory.SelectedInventoryItem) as Record;
-            if (string.IsNullOrEmpty(SelectedItem?.Name))
+
+            var SelectedDirectory = typeof(InventoryItemUI).GetField("Directory", AccessTools.all)?
+                .GetValue(CachedInventory.SelectedInventoryItem) as RecordDirectory;
+
+            if (SelectedItem == null && SelectedDirectory == null)
+            {
+                NotificationMessage.SpawnTextMessage("No copiable item selected!", colorX.Red);
+                return;
+            }
+
+            var SelectedObjectRecordId = SelectedItem != null ? SelectedItem.RecordId : (SelectedDirectory != null ? SelectedDirectory.EntryRecord.RecordId : null);
+
+            if (SelectedObjectRecordId == null)
+            {
+                NotificationMessage.SpawnTextMessage("Failed to get Record ID for selected object.", colorX.Red);
+                return;
+            }
+
+            var isDirectory = false;
+            string SelectedRecordId =
+                (from record in CachedInventory.CurrentDirectory.Records
+                 where SelectedObjectRecordId == record.RecordId
+                 select record.RecordId).FirstOrDefault();
+
+            if (SelectedRecordId == null) // try again but as a directory
+            {
+                isDirectory = true;
+                SelectedRecordId =
+                (from record in CachedInventory.CurrentDirectory.Subdirectories
+                 where SelectedObjectRecordId == record.EntryRecord.RecordId
+                 select record.EntryRecord.RecordId).FirstOrDefault();
+
+                if (SelectedRecordId == null)
+                {
+                    NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
+                    return;
+                }
+            }
+
+            // i'm not entirely sure why Cut is done like this.
+            // i'm assuming maybe it was supposed to have some kind of other complex behavior?
+            // but the behavior i observed from the OG mod was basically just Copy with a different name really
+            // either way i'll just keep it how it is (but updated for folder support), in case it's important somehow...
+
+            if (string.IsNullOrEmpty(SelectedItem?.Name) && string.IsNullOrEmpty(SelectedDirectory?.Name))
             {
                 NotificationMessage.SpawnTextMessage($"No item selected!", colorX.Red);
                 return;
             }
 
+            var SelectedObjectName = SelectedItem != null ? SelectedItem.Name : (SelectedDirectory != null ? SelectedDirectory.Name : null);
+
             var matchedEntries = _cache
-                .Where(kvp => kvp.Value.RecordId.Equals(SelectedItem.RecordId, StringComparison.OrdinalIgnoreCase))
+                .Where(kvp => kvp.Value.RecordId.Equals(SelectedObjectRecordId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (matchedEntries.Count == 0)
             {
-                Msg($"No entries found for {SelectedItem.Name}.");
+                Msg($"No entries found for {SelectedObjectName}.");
                 return;
             }
 
             foreach (var entry in matchedEntries)
             {
                 _cache["CopiedItem"] = entry.Value;
+                _cache["CutItem"] = entry.Value;
                 CachedDir = CachedInventory.CurrentDirectory;
-                NotificationMessage.SpawnTextMessage($"Cut item: {entry.Value.Name}", colorX.Red);
-                _cache.Remove(entry.Key);
+                NotificationMessage.SpawnTextMessage($"Cut: {CleanString(entry.Value.Name)}", colorX.FromHexCode("#D386FC"), 0.5f, 3f, 0.25f, 0.5f, 0.14f);
+                //_cache.Remove(entry.Key);
                 break; // this calls many times. so breaking may do good.
             }
+            DoUIUpdate(ref CachedInventory);
         }
 
         private static string? RemovePathRoot(string path)
@@ -566,9 +765,10 @@ namespace InventoryHelper
                 AssetURI = record.AssetURI;
             }
 
-            public RecordDirectory ToRecordDirectory(RecordDirectory parent)
+            public new Record ToRecord()
             {
-                Record toRecord = new Record {
+                return new Record
+                {
                     RecordId = RecordId,
                     Name = Name,
                     OwnerName = OwnerName,
@@ -577,7 +777,11 @@ namespace InventoryHelper
                     RecordType = RecordType,
                     AssetURI = AssetURI
                 };
-                return new RecordDirectory(toRecord, parent, Engine.Current);
+            }
+
+            public RecordDirectory ToRecordDirectory(RecordDirectory parent)
+            {
+                return new RecordDirectory(this.ToRecord(), parent, Engine.Current);
             }
         }
     }
