@@ -23,7 +23,7 @@ namespace InventoryHelper
         public override string Author => "Noble, kaan";
         public override string Version => VERSION_CONSTANT;
         public override string Link => "https://github.com/noblereign/InventorySearch";
-        const string harmonyId = "dev.kaan.InventorySearch";
+        const string harmonyId = "dog.glacier.InventoryHelper";
 
         private static Dictionary<string, SerializableRecord> _cache = new Dictionary<string, SerializableRecord>();
         private static RecordConverter _cacheConverter = new RecordConverter();

@@ -1,6 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventorySearch", "InventorySearch\InventorySearch.csproj", "{23B1359D-6C62-42CC-8E34-8FB123602811}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36705.20
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventoryHelper", "InventoryHelper\InventoryHelper.csproj", "{23B1359D-6C62-42CC-8E34-8FB123602811}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -12,5 +15,11 @@ Global
 		{23B1359D-6C62-42CC-8E34-8FB123602811}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{23B1359D-6C62-42CC-8E34-8FB123602811}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{23B1359D-6C62-42CC-8E34-8FB123602811}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7D7A66CF-9E17-48FE-A99E-C2A7CACC48D5}
 	EndGlobalSection
 EndGlobal
