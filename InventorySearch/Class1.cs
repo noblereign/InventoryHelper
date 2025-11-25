@@ -12,6 +12,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using static InventoryHelper.CoreSearch;
 
 namespace InventoryHelper
 {
@@ -152,6 +153,15 @@ namespace InventoryHelper
             {
                 var doDebugLogging = Config!.GetValue(DebugLogging);
 
+                if (directory.OwnerId == null || directory.OwnerId == "NONE")
+                {
+                    if (doDebugLogging)
+                    {
+                        Warn("Directory has no owner yet, we won't try and cache it");
+                    }
+                    return;
+                }
+
                 if (doDebugLogging) 
                 {
                     Debug($"Waiting for directory {directory.Name}...");
@@ -200,6 +210,22 @@ namespace InventoryHelper
             public static void OnUIUpdated(ref InventoryBrowser __instance)
             {
                 DoUIUpdate(ref __instance);
+            }
+
+            [HarmonyPostfix]
+            [HarmonyPatch(typeof(RecordManager), "DeleteRecord", typeof(Record))]
+            public static void OnRecordDeleted(Record record, ref RecordManager __instance)
+            {
+                if (Config!.GetValue(DebugLogging))
+                {
+                    Debug($"Removing a record from the cache...");
+                }
+                var id = GetPropertyValue(record, "RecordId") ?? record.RecordId;
+                _cache.Remove(id);
+                if (Config!.GetValue(DebugLogging))
+                {
+                    Debug($"Removed record {id} from cache. Type: {record.RecordType}");
+                }
             }
 
             private static void CacheDirectoryRecords(object directory)
@@ -399,7 +425,7 @@ namespace InventoryHelper
             {
                 Msg($"No entries found for {SelectedRecordId}.");
             }
-
+            SaveCacheToFile();
             DoUIUpdate(ref CachedInventory);
         }
 
@@ -409,7 +435,7 @@ namespace InventoryHelper
 
             if (Config!.GetValue(DebugLogging))
             {
-                Debug($" COPIED: {copiedItem} {copiedItem.ToRecord()}");
+                Debug($" PASTING: {copiedItem} {copiedItem.ToRecord()}");
             }
 
             //Msg(CachedInventory.CurrentDirectory.Name);
@@ -489,6 +515,7 @@ namespace InventoryHelper
                 if (cuttingPermitted)
                 {
                     NotificationMessage.SpawnTextMessage($"Moved {CleanString(copiedItem.Name)} from {CleanString(CachedDir.Name)} to {CleanString(CachedInventory.CurrentDirectory.Name)}", colorX.Green, 0.5f, 4.5f, 0.3f, 0.5f, 0.17f);
+                    _cache.Remove("CutItem");
                     _cache.Remove("CopiedItem");
                 }
                 else
@@ -501,6 +528,7 @@ namespace InventoryHelper
             {
                 NotificationMessage.SpawnTextMessage($"Pasted {CleanString(copiedItem.Name)} into {CleanString(CachedInventory.CurrentDirectory.Name)}", colorX.Green, 0.5f, 3.5f, 0.3f, 0.5f, 0.17f);
             }
+            SaveCacheToFile();
             DoUIUpdate(ref CachedInventory);
         }
 
@@ -580,6 +608,7 @@ namespace InventoryHelper
                 //_cache.Remove(entry.Key);
                 break; // this calls many times. so breaking may do good.
             }
+            SaveCacheToFile();
             DoUIUpdate(ref CachedInventory);
         }
 
@@ -746,7 +775,7 @@ namespace InventoryHelper
             {
                 RecordId = record.RecordId;
                 Name = record.Name;
-                OwnerName = record.OwnerName;
+                OwnerName = record.OwnerName ?? Engine.Current.Cloud.CurrentUsername;
                 AssetURI = record.AssetURI;
                 ThumbnailURI = record.ThumbnailURI;
                 Path = record.Path;
@@ -758,7 +787,7 @@ namespace InventoryHelper
                 {
                     RecordId = RecordId,
                     Name = Name,
-                    OwnerName = OwnerName,
+                    OwnerName = OwnerName ?? Engine.Current.Cloud.CurrentUsername,
                     AssetURI = AssetURI,
                     ThumbnailURI = ThumbnailURI,
                     Path = Path
@@ -781,7 +810,7 @@ namespace InventoryHelper
             {
                 RecordId = record.RecordId;
                 Name = record.Name;
-                OwnerName = record.OwnerName;
+                OwnerName = record.OwnerName ?? Engine.Current.Cloud.CurrentUsername;
                 OwnerId = record.OwnerId;
                 Path = record.Path;
                 RecordType = record.RecordType;
@@ -794,7 +823,7 @@ namespace InventoryHelper
                 {
                     RecordId = RecordId,
                     Name = Name,
-                    OwnerName = OwnerName,
+                    OwnerName = OwnerName ?? Engine.Current.Cloud.CurrentUsername,
                     OwnerId = OwnerId,
                     Path = Path,
                     RecordType = RecordType,
