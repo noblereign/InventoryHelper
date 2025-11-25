@@ -1,7 +1,9 @@
 # InventoryHelper
 
 A [ResoniteModLoader](https://github.com/resonite-modding-group/ResoniteModLoader) mod for [Resonite](https://resonite.com/) adding inventory search and management features.
+
 Based upon the [InventorySearch](https://github.com/ResoniteMods/InventorySearch) mod.
+<br><sub><sub>P.S: if you're the OG maintainer, feel free to cherrypick commits or poke me for a PR! i looked around and it seemed like you had quit the game completely, which is why i forked and took it into my own hands.</sub></sub>
 
 ## Features
 - Item and folder search in your inventory.
