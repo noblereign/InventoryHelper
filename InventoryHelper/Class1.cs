@@ -12,13 +12,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using static InventoryHelper.CoreSearch;
+using System.Threading.Tasks;
+
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 
 namespace InventoryHelper
 {
     public class CoreSearch : ResoniteMod
     {
-        internal const string VERSION_CONSTANT = "3.0.0";
+        internal const string VERSION_CONSTANT = "3.0.1";
         public override string Name => "InventoryHelper";
         public override string Author => "Noble, kaan";
         public override string Version => VERSION_CONSTANT;
@@ -35,12 +37,11 @@ namespace InventoryHelper
             FocusedNonRecursive
         }
 
-        private static readonly string CacheFilePath =
+        private static readonly string DefaultCacheFilePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "InventorySearchCache.json");
 
-        [AutoRegisterConfigKey] private static readonly ModConfigurationKey<string> CacheConfig =
-            new ModConfigurationKey<string>("Cache Config Location",
-                "Save InventorySearchCache to a separate location.", () => CacheFilePath);
+        [AutoRegisterConfigKey]
+        private static readonly ModConfigurationKey<string> CacheConfig = new ModConfigurationKey<string>("Cache Config Location", "Save InventorySearchCache to a separate location.", () => DefaultCacheFilePath);
 
         [AutoRegisterConfigKey]
         public static readonly ModConfigurationKey<SearchType> SearchStrategy = new ModConfigurationKey<SearchType>("Search Scope", "When searching, what parts of your inventory should be considered?\n\n<color=yellow>NOTE:</color> Caches from before v3.0.0 only support <b>EntireInventory</b>. If you have an older cache, it will be slowly updated to the new format as you navigate through folders.", () => SearchType.EntireInventory);
@@ -151,6 +152,10 @@ namespace InventoryHelper
             [HarmonyPatch(typeof(InventoryBrowser), nameof(InventoryBrowser.OpenDirectory))]
             public async static void OnDirectoryOpening(RecordDirectory directory, InventoryBrowser __instance)
             {
+                if (directory == null)
+                {
+                    return;
+                }
                 var doDebugLogging = Config!.GetValue(DebugLogging);
 
                 if (directory.OwnerId == null || directory.OwnerId == "NONE")
@@ -248,60 +253,79 @@ namespace InventoryHelper
 
                 if (RecordsField != null)
                 {
-                    var Records = (IEnumerable)RecordsField.GetValue(directory);
-                    foreach (Record record in Records)
+                    var Records = (IEnumerable)RecordsField.GetValue(directory)!;
+                    if (Records != null)
                     {
-                        var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
-                        if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
-
-                        if (record.RecordType != "directory" && record.RecordType != "link")
+                        foreach (Record record in Records)
                         {
-                            var serializableRecord = new SerializableRecord(record);
-                            _cache[id] = serializableRecord;
+                            var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
+                            if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value?.Path != null) continue;
+                            if (record == null) continue;
+                            if (id == null) continue; // pretty sure it shouldn't be null at this point but the compiler is whining about it so
 
-                            if (Config!.GetValue(DebugLogging))
+                            if (record.RecordType != "directory" && record.RecordType != "link")
                             {
-                                Debug($"Cached record: {id}, {serializableRecord.Name}, type: {record.RecordType}");
+                                var serializableRecord = new SerializableRecord(record);
+                                _cache[id] = serializableRecord;
+
+                                if (Config!.GetValue(DebugLogging))
+                                {
+                                    Debug($"Cached record: {id}, {serializableRecord.Name}, type: {record.RecordType}");
+                                }
+                            }
+                            else // in some cases, subdirectories show up as normal records (like when they're newly made). this is here to catch that
+                            {
+                                var serializableRecordDirectory = new SerializableRecordDirectory(record);
+                                _cache[id] = serializableRecordDirectory;
+
+                                if (Config!.GetValue(DebugLogging))
+                                {
+                                    Debug($"Cached record as subdirectory: {id}, {serializableRecordDirectory.Name}");
+                                }
                             }
                         }
-                        else // in some cases, subdirectories show up as normal records (like when they're newly made). this is here to catch that
-                        {
-                            var serializableRecordDirectory = new SerializableRecordDirectory(record);
-                            _cache[id] = serializableRecordDirectory;
-
-                            if (Config!.GetValue(DebugLogging))
-                            {
-                                Debug($"Cached record as subdirectory: {id}, {serializableRecordDirectory.Name}");
-                            }
-                        }
+                    }
+                    else
+                    {
+                        Warn("Directory has null records.");
                     }
                 }
 
                 if (SubdirectoriesField == null) return;
 
-                var Subdirectories = (IEnumerable)SubdirectoriesField.GetValue(directory);
-                foreach (RecordDirectory Subdirectory in Subdirectories)
+                var Subdirectories = (IEnumerable)SubdirectoriesField.GetValue(directory)!;
+                if (Subdirectories != null)
                 {
-                    var record = Subdirectory.EntryRecord;
-
-                    var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
-                    if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
-
-                    var serializableRecordDirectory = new SerializableRecordDirectory(Subdirectory.EntryRecord);
-                    _cache[id] = serializableRecordDirectory;
-
-                    if (Config!.GetValue(DebugLogging))
+                    foreach (RecordDirectory Subdirectory in Subdirectories)
                     {
-                        Debug($"Cached subdirectory: {id}, {serializableRecordDirectory.Name}");
-                    }
+                        var record = Subdirectory.EntryRecord;
 
-                    CacheDirectoryRecords(Subdirectory);
+                        var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
+                        if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
+                        if (id == null) continue; // pretty sure it shouldn't be null at this point but the compiler is whining about it so
+
+                        var serializableRecordDirectory = new SerializableRecordDirectory(Subdirectory.EntryRecord);
+                        _cache[id] = serializableRecordDirectory;
+
+                        if (Config!.GetValue(DebugLogging))
+                        {
+                            Debug($"Cached subdirectory: {id}, {serializableRecordDirectory.Name}");
+                        }
+
+                        CacheDirectoryRecords(Subdirectory);
+                    }
+                }
+                else
+                {
+                    Warn("Directory has null subdirectories.");
                 }
             }
         }
 
         private static void SaveCacheToFile()
         {
+            string CacheFilePath = Config!.GetValue(CacheConfig) ?? DefaultCacheFilePath;
+
             try
             {
                 var json = JsonConvert.SerializeObject(_cache, Formatting.Indented);
@@ -311,12 +335,14 @@ namespace InventoryHelper
             }
             catch (Exception e)
             {
-                // Console.WriteLine($"Error saving cache to file: {e.Message}");
+                Error($"Error saving cache to file: {e.Message}");
             }
         }
 
         private static void LoadCacheFromFile()
         {
+            string CacheFilePath = Config!.GetValue(CacheConfig) ?? DefaultCacheFilePath;
+
             if (!File.Exists(CacheFilePath))
             {
                 return;
@@ -324,13 +350,24 @@ namespace InventoryHelper
 
             try
             {
-                var json = File.ReadAllText(Config.GetValue(CacheConfig));
-                _cache = JsonConvert.DeserializeObject<Dictionary<string, SerializableRecord>>(json, _cacheConverter);
-                // Console.WriteLine($"Cache loaded from file. Entries: {_cache.Count}");
+                var json = File.ReadAllText(CacheFilePath);
+                if (json != null)
+                {
+                    _cache = JsonConvert.DeserializeObject<Dictionary<string, SerializableRecord>>(json, _cacheConverter) ?? new Dictionary<string, SerializableRecord>(); ;
+                    Debug($"Cache loaded from file. Entries: {_cache.Count}");
+                    if (_cache.Count <= 0)
+                    {
+                        Warn("No items in the cache! If you've used the mod before, something may have gone wrong while deserializing the JSON!");
+                    }
+                }
+                else
+                {
+                    Error($"Json was null when trying to read from cache file!");
+                }
             }
             catch (Exception e)
             {
-                // Console.WriteLine($"Error loading cache from file: {e.Message}");
+                Error($"Error loading cache from file: {e.Message}");
             }
         }
 
@@ -342,9 +379,9 @@ namespace InventoryHelper
         {
             RadiantUI_Constants.SetupEditorStyle(UI, extraPadding: true);
 
-            EnsureButtonInitialized(ref CopyItemButton, UI, "Copy", CopyItemButtonOnLocalPressed);
-            EnsureButtonInitialized(ref PasteItemButton, UI, "Paste", PasteItemButtonOnLocalPressed);
-            EnsureButtonInitialized(ref CutItemButton, UI, "Cut", CutItemButtonOnLocalPressed);
+            EnsureButtonInitialized(ref CopyItemButton!, UI, "Copy", CopyItemButtonOnLocalPressed);
+            EnsureButtonInitialized(ref PasteItemButton!, UI, "Paste", PasteItemButtonOnLocalPressed);
+            EnsureButtonInitialized(ref CutItemButton!, UI, "Cut", CutItemButtonOnLocalPressed);
 
             if (inventoryBrowser.SelectedItem?.Target != null && inventoryBrowser.SelectedItem.Target.IsFolder())
             {
@@ -391,15 +428,13 @@ namespace InventoryHelper
                 return;
             }
 
-            var isDirectory = false;
-            string SelectedRecordId =
+            string? SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Records
                  where SelectedObjectRecordId == record.RecordId
                  select record.RecordId).FirstOrDefault();
 
             if (SelectedRecordId == null) // try again but as a directory
             {
-                isDirectory = true;
                 SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Subdirectories
                  where SelectedObjectRecordId == record.EntryRecord.RecordId
@@ -474,7 +509,7 @@ namespace InventoryHelper
             {
                 if (isCut && cuttingPermitted)
                 {
-                    var records = (IList)recordsField.GetValue(CachedDir);
+                    var records = (IList)recordsField.GetValue(CachedDir)!;
                     var recordToRemove = records.Cast<Record>().FirstOrDefault(r => r.RecordId == copiedItem.RecordId);
                     if (recordToRemove != null)
                     {
@@ -487,7 +522,7 @@ namespace InventoryHelper
                         var subdirsField = typeof(RecordDirectory).GetField("subdirectories", AccessTools.all);
                         if (subdirsField != null)
                         {
-                            var subdirs = (IList)subdirsField.GetValue(CachedDir);
+                            var subdirs = (IList)subdirsField.GetValue(CachedDir)!;
                             var subdirToRemove = subdirs.Cast<RecordDirectory>().FirstOrDefault(r => r.EntryRecord.RecordId == copiedItem.RecordId);
                             if (subdirToRemove != null)
                             {
@@ -555,15 +590,13 @@ namespace InventoryHelper
                 return;
             }
 
-            var isDirectory = false;
-            string SelectedRecordId =
+            string? SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Records
                  where SelectedObjectRecordId == record.RecordId
                  select record.RecordId).FirstOrDefault();
 
             if (SelectedRecordId == null) // try again but as a directory
             {
-                isDirectory = true;
                 SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Subdirectories
                  where SelectedObjectRecordId == record.EntryRecord.RecordId
@@ -648,7 +681,7 @@ namespace InventoryHelper
             UI.Style.MinHeight = 30;
             //UI.Style.MinWidth = 30;
             UI.PushStyle();
-            LocalTextField = LocalTextField ?? UI.TextField(null, false, "Search", true, $"<alpha=#77><i>Search...");
+            LocalTextField = LocalTextField ?? UI.TextField(null!, false, "Search", true, $"<alpha=#77><i>Search...");
 
             LocalTextField.Text.HorizontalAutoSize.Value = true;
             LocalTextField.Text.Size.Value = 39.55418f;
@@ -666,7 +699,7 @@ namespace InventoryHelper
             layoutElement.PreferredWidth.Value = 200f;
             layoutElement.PreferredHeight.Value = 50f;
 
-            LocalTextField.Editor.Target.LocalSubmitPressed += async (Change) =>
+            LocalTextField.Editor.Target.LocalSubmitPressed += (Change) =>
             {
                 var TextField = LocalTextField.Editor.Target.Text.Target.Text;
                 if (string.IsNullOrEmpty(TextField)) return;
@@ -705,26 +738,31 @@ namespace InventoryHelper
 
                 PreviousTempDirectory = NewDir;
 
+                NewDir._loadTask = Task.Run(
+                    async () => 
+                    {
+                        var rootDirectory = NewDir.GetRootDirectory();
+
+                        foreach (RecordDirectory subdir in NewDir.Subdirectories)
+                        {
+                            string parentPath = GetParentPath(subdir.Path) ?? NewDir.ParentDirectory.Path;
+                            if (parentPath != rootDirectory.Path)
+                            {
+                                RecordDirectory originalParent = await rootDirectory.GetSubdirectoryAtPath(parentPath);
+                                SetPropertyValue(subdir, "ParentDirectory", originalParent);
+                            }
+                            else
+                            {
+                                SetPropertyValue(subdir, "ParentDirectory", rootDirectory);
+                            }
+                        }
+
+                        SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
+                        return Task.CompletedTask;
+                    }
+                );
+
                 InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
-
-                var rootDirectory = NewDir.GetRootDirectory();
-                
-                foreach (RecordDirectory subdir in NewDir.Subdirectories)
-                {
-                    string parentPath = GetParentPath(subdir.Path) ?? NewDir.ParentDirectory.Path;
-                    if (parentPath != rootDirectory.Path)
-                    {
-                        RecordDirectory originalParent = await rootDirectory.GetSubdirectoryAtPath(parentPath);
-                        SetPropertyValue(subdir, "ParentDirectory", originalParent);
-                    }
-                    else
-                    {
-                        SetPropertyValue(subdir, "ParentDirectory", rootDirectory);
-                    }
-                }
-
-                SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
-                _ = NewDir.EnsureFullyLoaded();
             };
         }
 
@@ -747,7 +785,7 @@ namespace InventoryHelper
             var property = typeof(T).GetProperty(propertyName, AccessTools.all);
             if (property != null && property.CanRead)
             {
-                return (string)property.GetValue(obj);
+                return (string)property.GetValue(obj)!;
             }
             else
             {
@@ -766,7 +804,6 @@ namespace InventoryHelper
             public string AssetURI { get; set; }
             public string ThumbnailURI { get; set; }
             public string Path { get; set; }
-
             public SerializableRecord()
             {
             }
