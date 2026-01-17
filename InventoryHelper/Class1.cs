@@ -12,7 +12,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using static FrooxEngine.RecordDirectory;
+using Formatting = Newtonsoft.Json.Formatting;
+using System.Security.Cryptography;
+using System.Text;
 
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 
@@ -20,7 +25,7 @@ namespace InventoryHelper
 {
     public class CoreSearch : ResoniteMod
     {
-        internal const string VERSION_CONSTANT = "3.0.1";
+        internal const string VERSION_CONSTANT = "4.0.0";
         public override string Name => "InventoryHelper";
         public override string Author => "Noble, kaan";
         public override string Version => VERSION_CONSTANT;
@@ -39,6 +44,8 @@ namespace InventoryHelper
 
         private static readonly string DefaultCacheFilePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "InventorySearchCache.json");
+
+        private static readonly string ResultDirectoryTag = "SEARCH_RESULT_DIRECTORY";
 
         [AutoRegisterConfigKey]
         private static readonly ModConfigurationKey<string> CacheConfig = new ModConfigurationKey<string>("Cache Config Location", "Save InventorySearchCache to a separate location.", () => DefaultCacheFilePath);
@@ -137,6 +144,134 @@ namespace InventoryHelper
             }
         }
 
+        [HarmonyPatch(typeof(InventoryItemUI))]
+        class InventorySearchFolderOverride
+        {
+
+            private static readonly MethodInfo _generateContentMethod = AccessTools.Method(typeof(BrowserDialog), "GenerateContent"); // https://github.com/hantabaru1014/BetterInventoryBrowser/blob/832a392d1e31fb6dd38870fb696ed31e0eefc2a6/BetterInventoryBrowser.cs#L466-L470
+            private static void MakeLoading()
+            {
+                _generateContentMethod.Invoke(InventoryBrowser.CurrentUserspaceInventory, new object?[] { SlideSwapRegion.Slide.Right, null, null, true });
+            }
+
+            private static void OpenDirectory(RecordDirectory? directory) // https://github.com/hantabaru1014/BetterInventoryBrowser/blob/832a392d1e31fb6dd38870fb696ed31e0eefc2a6/BetterInventoryBrowser.cs#L472-L482
+            {
+                if (directory is null)
+                {
+                    Warn("Passed directory was null! Falling back to current directory!!");
+                    directory = InventoryBrowser.CurrentUserspaceInventory.CurrentDirectory;
+                }
+                InventoryBrowser.CurrentUserspaceInventory.RunSynchronously(() =>
+                {
+                    InventoryBrowser.CurrentUserspaceInventory?.Open(directory, SlideSwapRegion.Slide.None);
+                }, true);
+            }
+
+            [HarmonyPrefix]
+            [HarmonyPatch(typeof(InventoryItemUI), nameof(InventoryItemUI.Open))]
+            public static bool OnInventoryItemOpen(ref InventoryItemUI __instance)
+            {
+                World itemWorld = __instance.World;
+                Slot ItemUISlot = __instance.Slot;
+                if (ItemUISlot != null && ItemUISlot.Tag_Field.Value == ResultDirectoryTag)
+                {
+                    var doDebugLogging = Config!.GetValue(DebugLogging);
+                    if (doDebugLogging)
+                    {
+                        Msg($"Detected search result folder.");
+                    }
+                    Comment? PathComment = ItemUISlot.GetComponent<Comment>();
+                    if (PathComment != null)
+                    {
+                        if (doDebugLogging)
+                        {
+                            Msg($"Detected path comment.");
+                        }
+                        string? ToPath = PathComment.Text.Value;
+                        if (ToPath != null)
+                        {
+                            if (doDebugLogging)
+                            {
+                                Msg($"Overriding and going to path: {ToPath}");
+                            }
+
+                            string rootOwner = Engine.Current.Cloud.CurrentUserID; // TODO: Groups probably wouldn't work well with this... i am in no groups to test with, though.
+
+                            RecordDirectoryInfo dirInfo = new RecordDirectoryInfo(rootOwner, ToPath);
+                            if (doDebugLogging)
+                            {
+                                Debug($"Created directory info: {dirInfo}, {dirInfo.Path}, {dirInfo.RootOwnerId}");
+                            }
+
+                            MakeLoading();
+                            __instance.RunSynchronouslyAsync(async () =>
+                            {
+                                try
+                                {
+                                    var foundDirectory = await dirInfo.ToRecordDirectory();
+
+                                    // Load the directory properly. Thanks to https://github.com/hantabaru1014/BetterInventoryBrowser/
+                                    itemWorld.RunSynchronously(() =>
+                                    {
+                                        OpenDirectory(foundDirectory);
+                                    });
+                                }
+                                catch (Exception ex)
+                                {
+                                    Warn($"Something went wrong </3 | {ex.Message}");
+                                }
+                            });
+
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
+
+
+        private static string GenerateShortKey(string input) // it makes the realllly long id into a slightly less long id
+        {
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(input));
+
+                // Take the first 16 bytes (128 bits) for a good balance of size vs collision safety
+                byte[] truncatedBytes = new byte[16];
+                Array.Copy(hashBytes, truncatedBytes, 16);
+
+                // Convert to Base64 to make it string-safe and compact
+                // We replace '/' and '+' to make it URL/filename safe if needed
+                return Convert.ToBase64String(truncatedBytes)
+                    .Replace('/', '_')
+                    .Replace('+', '-')
+                    .TrimEnd('='); // Remove padding
+            }
+        }
+
+
+
+        private static string GetDirectoryCanonicalRecordID(Record record)
+        {
+            string useRecordId = record.RecordId;
+            if (record.RecordType == "link")
+            {
+                Engine.Current.Cloud.Records.ExtractRecordID(new Uri(record.AssetURI), out var _, out useRecordId);
+            }
+            return useRecordId;
+        }
+        private static string GetDirectoryOrLinkOwnerId(RecordDirectory record)
+        {
+            return (record.IsLink && (record.LinkRecord != null)) ? record.LinkRecord.OwnerId : record.OwnerId;
+        }
+
+        private static string GetDirectoryCacheID(Record record)
+        {
+            return (record.RecordType == "link" && record.AssetURI != null) ? GenerateShortKey(String.Concat("LNK@", record.OwnerId, "@", record.AssetURI, "@", record.Name)) : GenerateShortKey(String.Concat("DIR@", record.OwnerId, "@", record.Path, "@", record.Name));
+        }
+
         [HarmonyPatch(typeof(InventoryBrowser))]
         class InventorySearchCoreHarmony
         {
@@ -144,7 +279,7 @@ namespace InventoryHelper
             [HarmonyPatch(typeof(InventoryBrowser), nameof(InventoryBrowser.Open))]
             public static void OnOpen(ref RecordDirectory __0, ref InventoryBrowser __instance, SyncRef<Slot> ____buttonsRoot)
             {
-                CacheDirectoryRecords(__0);
+                CacheDirectoryRecords(__0, __instance.CurrentDirectory.GetRelativePath(true));
                 SaveCacheToFile();
             }
 
@@ -176,7 +311,7 @@ namespace InventoryHelper
                 if (directory == __instance.CurrentDirectory)
                 {
                     Debug("Directory loaded, attempting to cache");
-                    CacheDirectoryRecords(directory);
+                    CacheDirectoryRecords(directory, __instance.CurrentDirectory.GetRelativePath(true));
                     SaveCacheToFile();
                     Debug("Directory has been cached");
                 }
@@ -205,7 +340,7 @@ namespace InventoryHelper
                 Button(ui, "Paste", __instance, __0);
                 Button(ui, "Cut", __instance, __0);
 
-                CacheDirectoryRecords(__0);
+                CacheDirectoryRecords(__0, __instance.CurrentDirectory.GetRelativePath(true));
                 SaveCacheToFile();
                 DoUIUpdate(ref CachedInventory);
             }
@@ -233,7 +368,7 @@ namespace InventoryHelper
                 }
             }
 
-            private static void CacheDirectoryRecords(object directory)
+            private static void CacheDirectoryRecords(object directory, string pathSnapshot)
             {
                 if (directory == null)
                 {
@@ -258,8 +393,12 @@ namespace InventoryHelper
                     {
                         foreach (Record record in Records)
                         {
-                            var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
+                            var id = GetPropertyValue(record, "RecordId") ?? record.RecordId;
+                            string directoryIdentifier = GetDirectoryCacheID(record);
+
                             if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value?.Path != null) continue;
+                            if (_cache.TryGetValue(directoryIdentifier, out SerializableRecord? directoryValue) && directoryValue?.Path != null) continue;
+
                             if (record == null) continue;
                             if (id == null) continue; // pretty sure it shouldn't be null at this point but the compiler is whining about it so
 
@@ -275,12 +414,12 @@ namespace InventoryHelper
                             }
                             else // in some cases, subdirectories show up as normal records (like when they're newly made). this is here to catch that
                             {
-                                var serializableRecordDirectory = new SerializableRecordDirectory(record);
-                                _cache[id] = serializableRecordDirectory;
+                                var serializableRecordDirectory = new SerializableRecordDirectory(record, pathSnapshot);
+                                _cache[directoryIdentifier] = serializableRecordDirectory; // Save folders as paths now, cause you can see a folder multiple times, but the path of the folder should always stay the same
 
                                 if (Config!.GetValue(DebugLogging))
                                 {
-                                    Debug($"Cached record as subdirectory: {id}, {serializableRecordDirectory.Name}");
+                                    Debug($"Cached record as subdirectory: {serializableRecordDirectory.Name} @ {pathSnapshot} ({directoryIdentifier})");
                                 }
                             }
                         }
@@ -301,18 +440,21 @@ namespace InventoryHelper
                         var record = Subdirectory.EntryRecord;
 
                         var id = GetPropertyValue(record, "RecordId") ?? record?.RecordId;
-                        if (id != null && _cache.TryGetValue(id, out SerializableRecord? value) && value.Path != null) continue;
-                        if (id == null) continue; // pretty sure it shouldn't be null at this point but the compiler is whining about it so
+                        if (id == null || record == null) continue;
 
-                        var serializableRecordDirectory = new SerializableRecordDirectory(Subdirectory.EntryRecord);
-                        _cache[id] = serializableRecordDirectory;
+                        string directoryIdentifier = GetDirectoryCacheID(record);
+                        if (_cache.TryGetValue(directoryIdentifier, out SerializableRecord? value) && value.Path != null) continue;
+                        
+
+                        var serializableRecordDirectory = new SerializableRecordDirectory(Subdirectory.EntryRecord, pathSnapshot);
+                        _cache[directoryIdentifier] = serializableRecordDirectory;
 
                         if (Config!.GetValue(DebugLogging))
                         {
-                            Debug($"Cached subdirectory: {id}, {serializableRecordDirectory.Name}");
+                            Debug($"Cached subdirectory: {serializableRecordDirectory.Name} @ {pathSnapshot} ({directoryIdentifier})");
                         }
 
-                        CacheDirectoryRecords(Subdirectory);
+                        CacheDirectoryRecords(Subdirectory, pathSnapshot);
                     }
                 }
                 else
@@ -653,6 +795,7 @@ namespace InventoryHelper
 
             if (firstSlashIndex == -1)
             {
+                Warn($"Could not remove the path root of {path}");
                 return null;
             }
 
@@ -665,11 +808,13 @@ namespace InventoryHelper
 
             if (lastSlashIndex == -1)
             {
+                Warn($"Could not find the parent path of {path}");
                 return null;
             }
 
             return RemovePathRoot(path.Substring(0, lastSlashIndex)); // unsure if this works for group inventories, i'm not in one to check...but it's similar to what's in InventoryBrowser, so
         }
+
 
         private static RecordDirectory? PreviousTempDirectory;
         private static void TextField(UIBuilder UI, string Tag, InventoryBrowser InventoryBrowser)
@@ -699,8 +844,10 @@ namespace InventoryHelper
             layoutElement.PreferredWidth.Value = 200f;
             layoutElement.PreferredHeight.Value = 50f;
 
-            LocalTextField.Editor.Target.LocalSubmitPressed += (Change) =>
+            LocalTextField.Editor.Target.LocalSubmitPressed += async (Change) =>
             {
+                var doDebugLogging = Config!.GetValue(DebugLogging);
+
                 var TextField = LocalTextField.Editor.Target.Text.Target.Text;
                 if (string.IsNullOrEmpty(TextField)) return;
 
@@ -727,6 +874,10 @@ namespace InventoryHelper
                     .Select(item => item.ToRecordDirectory(InventoryBrowser.CurrentDirectory))
                     .ToList();
 
+                var SearchResultsSerializableDirs = AllResults[true]
+                    .Cast<SerializableRecordDirectory>()
+                    .ToList();
+
                 var Records = new List<Record>(SearchResults);
                 var SubDirs = new List<RecordDirectory>(SearchResultsDirs);
 
@@ -734,7 +885,7 @@ namespace InventoryHelper
                 
                 SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.NotLoaded);
                 SetPropertyValue(NewDir, "Name", "Search Results");
-                SetPropertyValue(NewDir, "ParentDirectory", PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory : PreviousTempDirectory.ParentDirectory);
+                SetPropertyValue(NewDir, "ParentDirectory", (PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory : PreviousTempDirectory.ParentDirectory)); // (strategy != SearchType.EntireInventory ? (PreviousTempDirectory != InventoryBrowser.CurrentDirectory ? InventoryBrowser.CurrentDirectory : PreviousTempDirectory.ParentDirectory) : InventoryBrowser.GetCurrentUserRoot()));
 
                 PreviousTempDirectory = NewDir;
 
@@ -743,19 +894,7 @@ namespace InventoryHelper
                     {
                         var rootDirectory = NewDir.GetRootDirectory();
 
-                        foreach (RecordDirectory subdir in NewDir.Subdirectories)
-                        {
-                            string parentPath = GetParentPath(subdir.Path) ?? NewDir.ParentDirectory.Path;
-                            if (parentPath != rootDirectory.Path)
-                            {
-                                RecordDirectory originalParent = await rootDirectory.GetSubdirectoryAtPath(parentPath);
-                                SetPropertyValue(subdir, "ParentDirectory", originalParent);
-                            }
-                            else
-                            {
-                                SetPropertyValue(subdir, "ParentDirectory", rootDirectory);
-                            }
-                        }
+                        // there used to be stuff here but it was deemed unneccessary.
 
                         SetPropertyValue(NewDir, "CurrentLoadState", RecordDirectory.LoadState.FullyLoaded);
                         return Task.CompletedTask;
@@ -763,6 +902,50 @@ namespace InventoryHelper
                 );
 
                 InventoryBrowser.Open(NewDir, SlideSwapRegion.Slide.Left);
+
+                if (NewDir.CurrentLoadState != LoadState.FullyLoaded)
+                {
+                    if (doDebugLogging)
+                    {
+                        Msg("Waiting for directory to finish loading...");
+                    }
+                    await NewDir._loadTask;
+                }
+                InventoryBrowser.RunInUpdates(1, () => { // this is really hacky but if it works it works 😭
+                    _ = InventoryBrowser.RunSynchronouslyAsync(() =>
+                    {
+
+                        if (doDebugLogging)
+                        {
+                            Msg("Hooking into buttons now.");
+                        }
+
+                        foreach (KeyValuePair<FrooxEngine.Store.Record, InventoryItemUI> entry in InventoryBrowser._currentItems)
+                        {
+                            if (entry.Value.Directory != null)
+                            {
+                                if (doDebugLogging)
+                                {
+                                    Msg($"Directory: {entry.Value.Directory.Name}");
+                                }
+
+                                SerializableRecordDirectory? storedSubDirectory = SearchResultsSerializableDirs.Find(potentialDir => (potentialDir.OwnerId == GetDirectoryOrLinkOwnerId(entry.Value.Directory)) && (potentialDir.Name == entry.Value.Directory.Name));
+
+                                if (storedSubDirectory != null)
+                                {
+                                    if (doDebugLogging)
+                                    {
+                                        Msg($"Found stored subdirectory. Attaching path comment: {storedSubDirectory.Path + $"\\{storedSubDirectory.Name}"}");
+                                    }
+
+                                    entry.Value.Slot.Tag_Field.Value = ResultDirectoryTag;
+                                    Comment PathComment = entry.Value.Slot.AttachComponent<Comment>();
+                                    PathComment.Text.Value = storedSubDirectory.Path + $"\\{storedSubDirectory.Name}";
+                                }
+                            }
+                        }
+                    }, false);
+                });
             };
         }
 
@@ -804,6 +987,8 @@ namespace InventoryHelper
             public string AssetURI { get; set; }
             public string ThumbnailURI { get; set; }
             public string Path { get; set; }
+            public string LastUpdated { get; set; }
+
             public SerializableRecord()
             {
             }
@@ -816,10 +1001,25 @@ namespace InventoryHelper
                 AssetURI = record.AssetURI;
                 ThumbnailURI = record.ThumbnailURI;
                 Path = record.Path;
+
+                var time = record.LastModificationTime;
+
+                if (time.Kind == DateTimeKind.Unspecified)
+                {
+                    time = DateTime.SpecifyKind(time, DateTimeKind.Utc);
+                }
+                LastUpdated = new DateTimeOffset(time.ToUniversalTime()).ToUnixTimeMilliseconds().ToString();
             }
 
             public Record ToRecord()
             {
+                DateTime finalTime = DateTime.MinValue;
+
+                if (!string.IsNullOrEmpty(LastUpdated) && long.TryParse(LastUpdated, out long ticks))
+                {
+                    finalTime = DateTimeOffset.FromUnixTimeMilliseconds(ticks).UtcDateTime;
+                }
+
                 return new Record
                 {
                     RecordId = RecordId,
@@ -827,7 +1027,8 @@ namespace InventoryHelper
                     OwnerName = OwnerName ?? Engine.Current.Cloud.CurrentUsername,
                     AssetURI = AssetURI,
                     ThumbnailURI = ThumbnailURI,
-                    Path = Path
+                    Path = Path,
+                    LastModificationTime = finalTime
                 };
             }
         }
@@ -843,19 +1044,34 @@ namespace InventoryHelper
             {
             }
 
-            public SerializableRecordDirectory(Record record)
+            public SerializableRecordDirectory(Record record, string pathSnapshot)
             {
                 RecordId = record.RecordId;
                 Name = record.Name;
                 OwnerName = record.OwnerName ?? Engine.Current.Cloud.CurrentUsername;
                 OwnerId = record.OwnerId;
-                Path = record.Path;
+                Path = pathSnapshot;
                 RecordType = record.RecordType;
                 AssetURI = record.AssetURI;
+
+                var time = record.LastModificationTime;
+
+                if (time.Kind == DateTimeKind.Unspecified)
+                {
+                    time = DateTime.SpecifyKind(time, DateTimeKind.Utc);
+                }
+                LastUpdated = new DateTimeOffset(time.ToUniversalTime()).ToUnixTimeMilliseconds().ToString();
             }
 
             public new Record ToRecord()
             {
+                DateTime finalTime = DateTime.MinValue;
+
+                if (!string.IsNullOrEmpty(LastUpdated) && long.TryParse(LastUpdated, out long ticks))
+                {
+                    finalTime = DateTimeOffset.FromUnixTimeMilliseconds(ticks).UtcDateTime;
+                }
+
                 return new Record
                 {
                     RecordId = RecordId,
@@ -864,7 +1080,8 @@ namespace InventoryHelper
                     OwnerId = OwnerId,
                     Path = Path,
                     RecordType = RecordType,
-                    AssetURI = AssetURI
+                    AssetURI = AssetURI,
+                    LastModificationTime = finalTime
                 };
             }
 
