@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("A ResoniteModLoader mod adding extra functionality to the Inventory such as: copy, paste, and search")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyCopyright("Copyright © 2025 Noble, kaan")]
+[assembly: AssemblyCopyright("Copyright © 2026 Noble, kaan")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

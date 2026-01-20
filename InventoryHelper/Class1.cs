@@ -25,7 +25,7 @@ namespace InventoryHelper
 {
     public class CoreSearch : ResoniteMod
     {
-        internal const string VERSION_CONSTANT = "4.0.0";
+        internal const string VERSION_CONSTANT = "4.0.1-preview";
         public override string Name => "InventoryHelper";
         public override string Author => "Noble, kaan";
         public override string Version => VERSION_CONSTANT;
@@ -570,6 +570,7 @@ namespace InventoryHelper
                 return;
             }
 
+            bool isDirectory = false;
             string? SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Records
                  where SelectedObjectRecordId == record.RecordId
@@ -577,13 +578,15 @@ namespace InventoryHelper
 
             if (SelectedRecordId == null) // try again but as a directory
             {
+                isDirectory = true;
                 SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Subdirectories
                  where SelectedObjectRecordId == record.EntryRecord.RecordId
-                 select record.EntryRecord.RecordId).FirstOrDefault();
+                 select GetDirectoryCacheID(record.EntryRecord)).FirstOrDefault();
 
                 if (SelectedRecordId == null)
                 {
+                    Msg($"No entries found for {SelectedRecordId}. (couldn't find record id)");
                     NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
                     return;
                 }
@@ -600,7 +603,8 @@ namespace InventoryHelper
             }
             else
             {
-                Msg($"No entries found for {SelectedRecordId}.");
+                Msg($"No entries found for {SelectedRecordId}. (couldn't find in cache)");
+                NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
             }
             SaveCacheToFile();
             DoUIUpdate(ref CachedInventory);
@@ -626,7 +630,7 @@ namespace InventoryHelper
             var isCut = _cache.TryGetValue("CutItem", out SerializableRecord? value) && value == copiedItem;
 
             if (isCut) {
-                var id = GetPropertyValue(copiedItem, "RecordId") ?? copiedItem.RecordId;
+                var id = (copiedItem is SerializableRecordDirectory) ? (GetDirectoryCacheID((copiedItem as SerializableRecordDirectory)!.ToRecord())) : (GetPropertyValue(copiedItem, "RecordId") ?? copiedItem.RecordId);
                 _cache.Remove(id);
             }
 
@@ -668,8 +672,9 @@ namespace InventoryHelper
                             var subdirToRemove = subdirs.Cast<RecordDirectory>().FirstOrDefault(r => r.EntryRecord.RecordId == copiedItem.RecordId);
                             if (subdirToRemove != null)
                             {
-                                subdirs.Remove(subdirToRemove);
-                                Engine.Current.RecordManager.DeleteRecord(subdirToRemove.EntryRecord);
+                                //subdirs.Remove(subdirToRemove);
+                               // Engine.Current.RecordManager.DeleteRecord(subdirToRemove.EntryRecord);
+                                CachedDir.DeleteSubdirectory(subdirToRemove);
                             }
                             else
                             {
@@ -742,10 +747,11 @@ namespace InventoryHelper
                 SelectedRecordId =
                 (from record in CachedInventory.CurrentDirectory.Subdirectories
                  where SelectedObjectRecordId == record.EntryRecord.RecordId
-                 select record.EntryRecord.RecordId).FirstOrDefault();
+                 select GetDirectoryCacheID(record.EntryRecord)).FirstOrDefault();
 
                 if (SelectedRecordId == null)
                 {
+                    Msg($"Error cutting {SelectedRecordId}. (couldn't find record id)");
                     NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
                     return;
                 }
@@ -770,7 +776,8 @@ namespace InventoryHelper
 
             if (matchedEntries.Count == 0)
             {
-                Msg($"No entries found for {SelectedObjectName}.");
+                Msg($"No entries found for {SelectedObjectName}. (Couldnt find matching entries)");
+                NotificationMessage.SpawnTextMessage("Selected item not found in records!!", colorX.Red);
                 return;
             }
 
