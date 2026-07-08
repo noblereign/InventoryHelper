@@ -25,10 +25,10 @@ namespace InventoryHelper
 {
     public class CoreSearch : ResoniteMod
     {
-        internal const string VERSION_CONSTANT = "4.0.1-preview";
+        internal const string VERSION_CONSTANT = "4.0.2";
         public override string Name => "InventoryHelper";
         public override string Author => "Noble, kaan";
-        public override string Version => VERSION_CONSTANT;
+        public override string Version => "4.0.2-preview";
         public override string Link => "https://github.com/noblereign/InventorySearch";
         const string harmonyId = "dog.glacier.InventoryHelper";
 
